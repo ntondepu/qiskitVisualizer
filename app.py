@@ -207,6 +207,8 @@ with tab_dragdrop:
     st.header("🛠️ Drag & Drop Circuit Builder - Demo")
     st.info("Full drag-and-drop quantum circuit builder requires React + Streamlit Components integration, which is beyond basic Streamlit Python. This placeholder demonstrates where that feature will go.")
 
-    st.markdown(""
+    st.markdown("""
     - Drag qubits and gates to build circuits visually  
-    - Get real-time feedback on gate correctness
+    - Get real-time feedback on gate correctness  
+    - Guided hints and AI suggestions  
+    """)  

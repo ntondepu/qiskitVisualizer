@@ -2,6 +2,8 @@ import streamlit as st
 from qiskit import QuantumCircuit, Aer, execute
 from qiskit.visualization import plot_bloch_multivector
 import matplotlib.pyplot as plt
+from qiskit.quantum_info import Statevector, partial_trace
+from qiskit.visualization import plot_bloch_vector
 
 st.set_page_config(page_title="Qiskit Visualizer", layout="centered")
 st.title("🧠 Qiskit Circuit Visualizer")
@@ -86,7 +88,15 @@ with tab2:
         backend = Aer.get_backend('statevector_simulator')
         result = execute(qc, backend).result()
         statevector = result.get_statevector()
-        st.pyplot(plot_bloch_multivector(statevector))
+        if num_qubits == 1:
+            st.pyplot(plot_bloch_multivector(statevector))
+        else:
+            st.subheader("Bloch Spheres (Individual Qubits)")
+            sv = Statevector(statevector)
+            for i in range(num_qubits):
+                reduced = partial_trace(sv, [j for j in range(num_qubits) if j != i])
+                bloch = plot_bloch_vector(reduced.data[:3], title=f"Qubit {i}")
+                st.pyplot(bloch)
     else:
         st.subheader("📊 Measurement Results")
         backend = Aer.get_backend('qasm_simulator')

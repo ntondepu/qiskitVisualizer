@@ -13,9 +13,9 @@ st.title("🧠 Quantum Learning Platform with AI Chatbot")
 # ============ OPENAI SETUP ============
 openai.api_key = st.secrets.get("OPENAI_API_KEY", "")
 
-def ask_openai(prompt, model="gpt-4", temperature=0.7):
+def ask_openai(prompt, model="gpt-3.5-turbo", temperature=0.7):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
@@ -192,8 +192,17 @@ with tab_chat:
             st.session_state.chat_history.append({"role": "user", "content": user_input})
 
             # Generate AI response
-            response = ask_openai(user_input)
-            st.session_state.chat_history.append({"role": "assistant", "content": response})
+            try:
+                response = openai.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=st.session_state.chat_history,
+                    temperature=0.7,
+                )
+                answer = response.choices[0].message.content.strip()
+            except Exception as e:
+                answer = f"Error: {e}"
+
+            st.session_state.chat_history.append({"role": "assistant", "content": answer})
 
         # Display chat history
         for chat in st.session_state.chat_history:
@@ -211,4 +220,4 @@ with tab_dragdrop:
     - Drag qubits and gates to build circuits visually  
     - Get real-time feedback on gate correctness  
     - Guided hints and AI suggestions  
-    """)  
+    """)

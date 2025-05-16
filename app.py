@@ -196,14 +196,3 @@ with tab_chat:
 
     for speaker, msg in st.session_state.local_chat_history:
         st.markdown(f"**{speaker}:** {msg}")
-
-# ========== TAB 5: Drag & Drop Circuit (Demo Placeholder) ==========
-with tab_dragdrop:
-    st.header("🛠️ Drag & Drop Circuit Builder - Demo")
-    st.info("Full drag-and-drop quantum circuit builder requires React + Streamlit Components integration, which is beyond basic Streamlit Python. This placeholder demonstrates where that feature will go.")
-
-    st.markdown("""
-    - Drag qubits and gates to build circuits visually  
-    - Get real-time feedback on gate correctness  
-    - Guided hints and AI suggestions  
-    """)

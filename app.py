@@ -3,30 +3,33 @@ from qiskit import QuantumCircuit, Aer, execute
 from qiskit.visualization import plot_bloch_vector, plot_bloch_multivector
 from qiskit.quantum_info import Statevector, Pauli, partial_trace
 import numpy as np
-import openai
 import matplotlib.pyplot as plt
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
 
 # ============ CONFIG =============
 st.set_page_config(page_title="Quantum Learning Platform", layout="wide")
-st.title("🧠 Quantum Learning Platform with AI Chatbot")
+st.title("🧠 Quantum Learning Platform with Local Chatbot")
 
-# ============ OPENAI SETUP ============
-openai.api_key = st.secrets.get("OPENAI_API_KEY", "")
+# ============ Load Local AI Model ============
+@st.cache_resource(show_spinner=False)
+def load_model():
+    tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-small")
+    model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-small")
+    return tokenizer, model
 
-def ask_openai(prompt, model="gpt-3.5-turbo", temperature=0.7):
-    try:
-        response = openai.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"Error: {e}"
+tokenizer, model = load_model()
+
+def local_chatbot_response(chat_history_ids, new_input):
+    new_input_ids = tokenizer.encode(new_input + tokenizer.eos_token, return_tensors='pt')
+    bot_input_ids = torch.cat([chat_history_ids, new_input_ids], dim=-1) if chat_history_ids is not None else new_input_ids
+    chat_history_ids = model.generate(bot_input_ids, max_length=1000, pad_token_id=tokenizer.eos_token_id)
+    response = tokenizer.decode(chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
+    return response, chat_history_ids
 
 # ============ TABS =============
 tab_upload, tab_build, tab_info, tab_chat, tab_dragdrop = st.tabs(
-    ["📤 Upload QASM File", "🧱 Build Circuit", "📚 Quantum Info", "🤖 Ask AI Chatbot", "🛠️ Drag & Drop Circuit (Demo)"]
+    ["📤 Upload QASM File", "🧱 Build Circuit", "📚 Quantum Info", "🤖 Ask Local Chatbot", "🛠️ Drag & Drop Circuit (Demo)"]
 )
 
 # ========== TAB 1: Upload QASM ==========
@@ -176,40 +179,23 @@ This collapse is irreversible and destroys the quantum state, which is why measu
 
     st.markdown(info[topic])
 
-# ========== TAB 4: AI Chatbot ==========
+# ========== TAB 4: Local AI Chatbot ==========
 with tab_chat:
-    st.header("🤖 Ask the Quantum AI Chatbot")
+    st.header("🤖 Ask the Local Quantum Chatbot")
 
-    if not openai.api_key:
-        st.error("OpenAI API key not found. Please set your OpenAI API key in Streamlit secrets as `OPENAI_API_KEY`.")
-    else:
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []
+    if "local_chat_history" not in st.session_state:
+        st.session_state.local_chat_history = []
+        st.session_state.local_chat_ids = None
 
-        user_input = st.text_input("Enter your question about quantum computing:")
+    user_query = st.text_input("Enter your question about quantum computing:")
 
-        if user_input:
-            st.session_state.chat_history.append({"role": "user", "content": user_input})
+    if user_query:
+        response, st.session_state.local_chat_ids = local_chatbot_response(st.session_state.local_chat_ids, user_query)
+        st.session_state.local_chat_history.append(("You", user_query))
+        st.session_state.local_chat_history.append(("Bot", response))
 
-            # Generate AI response
-            try:
-                response = openai.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=st.session_state.chat_history,
-                    temperature=0.7,
-                )
-                answer = response.choices[0].message.content.strip()
-            except Exception as e:
-                answer = f"Error: {e}"
-
-            st.session_state.chat_history.append({"role": "assistant", "content": answer})
-
-        # Display chat history
-        for chat in st.session_state.chat_history:
-            if chat["role"] == "user":
-                st.markdown(f"**You:** {chat['content']}")
-            else:
-                st.markdown(f"**AI:** {chat['content']}")
+    for speaker, msg in st.session_state.local_chat_history:
+        st.markdown(f"**{speaker}:** {msg}")
 
 # ========== TAB 5: Drag & Drop Circuit (Demo Placeholder) ==========
 with tab_dragdrop:

@@ -27,9 +27,17 @@ def local_chatbot_response(chat_history_ids, new_input):
     response = tokenizer.decode(chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
     return response, chat_history_ids
 
+# ============ Q&A Knowledge Base ============
+qa_pairs = {
+    "what is quantum computing": "Quantum computing uses quantum bits or qubits that can be in superpositions, enabling powerful parallel computations.",
+    "what is a qubit": "A qubit is the quantum version of a classical bit. Unlike a bit, it can exist in a superposition of 0 and 1.",
+    "what is a hadamard gate": "The Hadamard gate creates a superposition state. It transforms |0⟩ into (|0⟩ + |1⟩)/√2 and |1⟩ into (|0⟩ - |1⟩)/√2.",
+    "what is a measurement": "Measurement collapses a qubit's state into a definite classical value: either 0 or 1. It ends the quantum behavior."
+}
+
 # ============ TABS =============
-tab_upload, tab_build, tab_info, tab_chat, tab_dragdrop = st.tabs(
-    ["📤 Upload QASM File", "🧱 Build Circuit", "📚 Quantum Info", "🤖 Ask Local Chatbot", "🛠️ Drag & Drop Circuit (Demo)"]
+tab_upload, tab_build, tab_info, tab_chat = st.tabs(
+    ["📤 Upload QASM File", "🧱 Build Circuit", "📚 Quantum Info", "🤖 Ask Local Chatbot"]
 )
 
 # ========== TAB 1: Upload QASM ==========
@@ -67,25 +75,27 @@ with tab_build:
     st.sidebar.header("🎛️ Circuit Builder")
     num_qubits = st.sidebar.number_input("Number of Qubits", min_value=1, max_value=5, value=2)
 
-    st.sidebar.subheader("Apply Gates")
-    apply_h = st.sidebar.checkbox("H gate on q[0]")
-    apply_x = st.sidebar.checkbox("X gate on q[1]")
-    apply_y = st.sidebar.checkbox("Y gate on q[0]")
-    apply_z = st.sidebar.checkbox("Z gate on q[1]")
+    st.sidebar.subheader("Number of Gates")
+    num_h = st.sidebar.number_input("Number of H gates on q[0]", min_value=0, max_value=5, value=1)
+    num_x = st.sidebar.number_input("Number of X gates on q[1]", min_value=0, max_value=5, value=1)
+    num_y = st.sidebar.number_input("Number of Y gates on q[0]", min_value=0, max_value=5, value=0)
+    num_z = st.sidebar.number_input("Number of Z gates on q[1]", min_value=0, max_value=5, value=0)
     apply_cx = st.sidebar.checkbox("CX (q[0] → q[1])")
     apply_swap = st.sidebar.checkbox("SWAP (q[0] ↔ q[1])")
     measure = st.sidebar.checkbox("Add Measurement")
 
     qc = QuantumCircuit(num_qubits, num_qubits if measure else 0)
 
-    if apply_h:
+    for _ in range(num_h):
         qc.h(0)
-    if apply_x and num_qubits > 1:
-        qc.x(1)
-    if apply_y:
+    for _ in range(num_x):
+        if num_qubits > 1:
+            qc.x(1)
+    for _ in range(num_y):
         qc.y(0)
-    if apply_z and num_qubits > 1:
-        qc.z(1)
+    for _ in range(num_z):
+        if num_qubits > 1:
+            qc.z(1)
     if apply_cx and num_qubits > 1:
         qc.cx(0, 1)
     if apply_swap and num_qubits > 1:
@@ -190,7 +200,13 @@ with tab_chat:
     user_query = st.text_input("Enter your question about quantum computing:")
 
     if user_query:
-        response, st.session_state.local_chat_ids = local_chatbot_response(st.session_state.local_chat_ids, user_query)
+        # Try knowledge base first
+        response = qa_pairs.get(user_query.lower())
+
+        # Fallback to DialoGPT if no match found
+        if not response:
+            response, st.session_state.local_chat_ids = local_chatbot_response(st.session_state.local_chat_ids, user_query)
+
         st.session_state.local_chat_history.append(("You", user_query))
         st.session_state.local_chat_history.append(("Bot", response))
 

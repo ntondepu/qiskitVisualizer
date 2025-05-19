@@ -1,9 +1,9 @@
 import streamlit as st
 from qiskit import QuantumCircuit, Aer, execute, transpile
-from qiskit.visualization import plot_bloch_multivector
-from qiskit_ibm_provider import IBMProvider
+from qiskit.visualization import plot_bloch_vector, plot_bloch_multivector
+from qiskit.quantum_info import Statevector
 from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, pauli_error
-import numpy as np
+from qiskit_ibm_provider import IBMProvider
 import matplotlib.pyplot as plt
 
 # ============ CONFIG =============
@@ -14,7 +14,6 @@ st.title("🧠 Quantum Learning Platform")
 tabs = st.tabs([
     "📤 Upload QASM File", 
     "🧱 Build Circuit", 
-    "🧠 Explain Step-by-Step", 
     "🚀 Optimize Circuit", 
     "🌐 Run on IBM Quantum", 
     "🧪 Noise Simulation", 
@@ -39,6 +38,12 @@ def explain_gate(gate, target, control):
 def has_measurement(circuit):
     return any(inst.operation.name == 'measure' for inst in circuit.data)
 
+def plot_bloch_side_by_side(state_vector, num_qubits):
+    cols = st.columns(num_qubits)
+    for i, col in enumerate(cols):
+        bloch = plot_bloch_vector(state_vector._data_for_qubit(i))
+        col.pyplot(bloch, clear_figure=True)
+
 # ========== TAB 0: Upload QASM ==========
 with tabs[0]:
     uploaded_file = st.file_uploader("Upload your QASM file (.qasm)", type=["qasm"])
@@ -62,8 +67,11 @@ with tabs[0]:
                 sim_backend = Aer.get_backend('statevector_simulator')
                 sim_result = execute(qc, sim_backend).result()
                 state_vector = sim_result.get_statevector()
-                st.subheader("Bloch Sphere (Final State)")
-                st.pyplot(plot_bloch_multivector(state_vector))
+                st.subheader("Bloch Spheres (Final State of Each Qubit)")
+                cols = st.columns(qc.num_qubits)
+                for i, col in enumerate(cols):
+                    fig = plot_bloch_vector(state_vector._data_for_qubit(i), title=f"Qubit {i}")
+                    col.pyplot(fig)
 
         except Exception as e:
             st.error(f"Error: {e}")
@@ -115,19 +123,27 @@ with tabs[1]:
     for step in explanations:
         st.write("- " + step)
 
-# ========== TAB 3: Optimize ==========
-with tabs[3]:
+    if not measure:
+        sim_backend = Aer.get_backend('statevector_simulator')
+        sim_result = execute(qc, sim_backend).result()
+        state_vector = sim_result.get_statevector()
+        st.subheader("Bloch Spheres (Final State of Each Qubit)")
+        cols = st.columns(num_qubits)
+        for i, col in enumerate(cols):
+            fig = plot_bloch_vector(state_vector._data_for_qubit(i), title=f"Qubit {i}")
+            col.pyplot(fig)
+
+# ========== TAB 2: Optimize Circuit ==========
+with tabs[2]:
     st.header("🚀 Optimized Circuit")
     if 'qc' in locals():
         optimized = transpile(qc, optimization_level=3)
         st.write("Before Optimization: ", len(qc.data), " gates")
         st.write("After Optimization: ", len(optimized.data), " gates")
         st.pyplot(optimized.draw(output="mpl"))
-    else:
-        st.info("No circuit loaded or built yet.")
 
-# ========== TAB 4: IBM Quantum Run ==========
-with tabs[4]:
+# ========== TAB 3: Run on IBM Quantum ==========
+with tabs[3]:
     st.header("🌐 Run on IBM Quantum")
     st.warning("You need an IBM Quantum account and API token to use this feature.")
     token = st.text_input("Enter your IBM Quantum API Token:", type="password")
@@ -137,19 +153,14 @@ with tabs[4]:
             backend = provider.get_backend("ibmq_qasm_simulator")
             job = backend.run(qc, shots=1024)
             result = job.result()
-
-            if has_measurement(qc):
-                counts = result.get_counts()
-                st.subheader("IBM Simulator Results")
-                st.bar_chart(counts)
-            else:
-                st.info("Circuit has no measurements; cannot display counts.")
-
+            counts = result.get_counts()
+            st.subheader("IBM Simulator Results")
+            st.bar_chart(counts)
         except Exception as e:
             st.error(f"Failed to connect or run: {e}")
 
-# ========== TAB 5: Noise Simulation ==========
-with tabs[5]:
+# ========== TAB 4: Noise Simulation ==========
+with tabs[4]:
     st.header("🧪 Simulate Quantum Noise")
     noise_model = NoiseModel()
     if st.checkbox("Add Bit-flip Noise"):
@@ -163,15 +174,11 @@ with tabs[5]:
     backend = Aer.get_backend('qasm_simulator')
     job = execute(qc, backend, noise_model=noise_model, shots=1024)
     result = job.result()
+    st.subheader("Results with Noise")
+    st.bar_chart(result.get_counts())
 
-    if has_measurement(qc):
-        st.subheader("Results with Noise")
-        st.bar_chart(result.get_counts())
-    else:
-        st.info("Circuit has no measurements; cannot display counts.")
-
-# ========== TAB 6: Challenge Mode ==========
-with tabs[6]:
+# ========== TAB 5: Challenge Mode ==========
+with tabs[5]:
     st.header("🎯 Quantum Challenge Mode")
     challenge = st.selectbox("Choose a challenge", ["Create a Bell State", "Flip qubit with one gate"])
     if challenge == "Create a Bell State":

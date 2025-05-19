@@ -75,15 +75,15 @@ with tab_build:
     st.sidebar.header("🎛️ Circuit Builder")
     num_qubits = st.sidebar.number_input("Number of Qubits", min_value=1, max_value=5, value=2)
 
-    st.sidebar.subheader("Add Gates by Position")
+    st.sidebar.subheader("Add Up to 15 Gates by Position")
     gate_instructions = []
-    for i in range(5):
+    for i in range(15):
         col = st.sidebar.columns(3)
-        gate_type = col[0].selectbox(f"Gate {i+1}", ["", "H", "X", "Y", "Z", "CX", "SWAP"])
-        target = col[1].number_input(f"q[{i+1}] target", min_value=0, max_value=num_qubits-1, step=1)
+        gate_type = col[0].selectbox(f"Gate {i+1}", ["", "H", "X", "Y", "Z", "CX", "SWAP"], key=f"gate_{i}")
+        target = col[1].number_input(f"q[{i}] target", min_value=0, max_value=num_qubits-1, step=1, key=f"target_{i}")
         control = None
         if gate_type in ["CX", "SWAP"]:
-            control = col[2].number_input(f"q[{i+1}] control", min_value=0, max_value=num_qubits-1, step=1)
+            control = col[2].number_input(f"q[{i}] control", min_value=0, max_value=num_qubits-1, step=1, key=f"control_{i}")
         if gate_type:
             gate_instructions.append((gate_type, target, control))
 
@@ -110,6 +110,14 @@ with tab_build:
 
     st.subheader("🧩 Generated Circuit")
     st.pyplot(qc.draw(output="mpl"))
+
+    st.write(f"The circuit consists of {len(qc.data)} gate operations.")
+    if any(gate[0] == 'H' for gate in gate_instructions):
+        st.info("This circuit includes Hadamard gates, so it may involve quantum superposition.")
+    if any(gate[0] == 'CX' for gate in gate_instructions):
+        st.info("This circuit includes CX gates, suggesting the presence of quantum entanglement.")
+    if measure:
+        st.info("Measurement gates collapse the quantum state into classical outcomes.")
 
     if not measure:
         if num_qubits == 1:
@@ -157,7 +165,7 @@ with tab_info:
     topic = st.selectbox("Choose a topic", ["Hadamard Gate (H)", "Pauli-X Gate (X)", "Qubit", "Measurement"])
 
     info = {
-        "Hadamard Gate (H)": """\
+        "Hadamard Gate (H)": """
 The Hadamard gate (H) is one of the fundamental single-qubit gates in quantum computing. It transforms the basis states |0⟩ and |1⟩ into equal superpositions:
 |0⟩ → (|0⟩ + |1⟩) / √2
 |1⟩ → (|0⟩ - |1⟩) / √2
@@ -167,7 +175,7 @@ By applying the H gate, a qubit initially in a definite state can be put into a 
 
 Understanding the Hadamard gate is essential for grasping the power of quantum interference and the behavior of quantum algorithms like the Deutsch-Jozsa and Grover's search algorithm.
 """,
-        "Pauli-X Gate (X)": """\
+        "Pauli-X Gate (X)": """
 The Pauli-X gate acts as a quantum NOT gate, flipping the state of a qubit:
 |0⟩ ↔ |1⟩
 
@@ -175,14 +183,14 @@ This gate is essential for manipulating qubits and is often used in constructing
 
 The Pauli-X gate is also a key building block in quantum error correction and quantum algorithms, enabling the reversal or flipping of qubit states as needed.
 """,
-        "Qubit": """\
+        "Qubit": """
 A qubit is the fundamental unit of quantum information, analogous to a classical bit but with much richer behavior.
 
 Unlike classical bits that are either 0 or 1, qubits can exist in a superposition of both states simultaneously, described by complex amplitudes. This superposition enables quantum computers to process a vast number of possibilities at once.
 
 Qubits also exhibit entanglement, a quantum phenomenon where the state of one qubit is intrinsically linked to another, regardless of distance. Together, superposition and entanglement provide the foundation for the power of quantum computation.
 """,
-        "Measurement": """\
+        "Measurement": """
 Measurement in quantum computing is the process of extracting classical information from a qubit.
 
 When a qubit is measured, its superposition collapses probabilistically to either |0⟩ or |1⟩. The outcome depends on the probability amplitudes of the superposition state.

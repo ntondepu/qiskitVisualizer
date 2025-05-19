@@ -1,7 +1,7 @@
 import streamlit as st
 from qiskit import QuantumCircuit, Aer, execute, transpile
 from qiskit.visualization import plot_bloch_vector, plot_bloch_multivector
-from qiskit.quantum_info import Statevector
+from qiskit.quantum_info import Statevector, DensityMatrix, partial_trace
 from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, pauli_error
 from qiskit_ibm_provider import IBMProvider
 import matplotlib.pyplot as plt
@@ -38,12 +38,6 @@ def explain_gate(gate, target, control):
 def has_measurement(circuit):
     return any(inst.operation.name == 'measure' for inst in circuit.data)
 
-def plot_bloch_side_by_side(state_vector, num_qubits):
-    cols = st.columns(num_qubits)
-    for i, col in enumerate(cols):
-        bloch = plot_bloch_vector(state_vector._data_for_qubit(i))
-        col.pyplot(bloch, clear_figure=True)
-
 # ========== TAB 0: Upload QASM ==========
 with tabs[0]:
     uploaded_file = st.file_uploader("Upload your QASM file (.qasm)", type=["qasm"])
@@ -67,10 +61,15 @@ with tabs[0]:
                 sim_backend = Aer.get_backend('statevector_simulator')
                 sim_result = execute(qc, sim_backend).result()
                 state_vector = sim_result.get_statevector()
-                st.subheader("Bloch Spheres (Final State of Each Qubit)")
-                cols = st.columns(qc.num_qubits)
+                st.subheader("Bloch Sphere (Final State)")
+                
+                num_qubits = qc.num_qubits
+                cols = st.columns(num_qubits)
+                
                 for i, col in enumerate(cols):
-                    fig = plot_bloch_vector(state_vector._data_for_qubit(i), title=f"Qubit {i}")
+                    reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
+                    bloch_vec = DensityMatrix(reduced_dm).to_bloch_vector()
+                    fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
                     col.pyplot(fig)
 
         except Exception as e:
@@ -122,19 +121,22 @@ with tabs[1]:
     st.subheader("🧠 Step-by-Step Explanation")
     for step in explanations:
         st.write("- " + step)
-
+        
     if not measure:
+        # Show Bloch spheres side by side for each qubit
+        st.subheader("Bloch Sphere (Final State)")
         sim_backend = Aer.get_backend('statevector_simulator')
         sim_result = execute(qc, sim_backend).result()
         state_vector = sim_result.get_statevector()
-        st.subheader("Bloch Spheres (Final State of Each Qubit)")
         cols = st.columns(num_qubits)
         for i, col in enumerate(cols):
-            fig = plot_bloch_vector(state_vector._data_for_qubit(i), title=f"Qubit {i}")
+            reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
+            bloch_vec = DensityMatrix(reduced_dm).to_bloch_vector()
+            fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
             col.pyplot(fig)
 
-# ========== TAB 2: Optimize Circuit ==========
-with tabs[2]:
+# ========== TAB 3: Optimize ==========
+with tabs[2]:  # Remember tab index shifted since Step-by-Step removed
     st.header("🚀 Optimized Circuit")
     if 'qc' in locals():
         optimized = transpile(qc, optimization_level=3)
@@ -142,7 +144,7 @@ with tabs[2]:
         st.write("After Optimization: ", len(optimized.data), " gates")
         st.pyplot(optimized.draw(output="mpl"))
 
-# ========== TAB 3: Run on IBM Quantum ==========
+# ========== TAB 4: IBM Quantum Run ==========
 with tabs[3]:
     st.header("🌐 Run on IBM Quantum")
     st.warning("You need an IBM Quantum account and API token to use this feature.")
@@ -159,7 +161,7 @@ with tabs[3]:
         except Exception as e:
             st.error(f"Failed to connect or run: {e}")
 
-# ========== TAB 4: Noise Simulation ==========
+# ========== TAB 5: Noise Simulation ==========
 with tabs[4]:
     st.header("🧪 Simulate Quantum Noise")
     noise_model = NoiseModel()
@@ -177,7 +179,7 @@ with tabs[4]:
     st.subheader("Results with Noise")
     st.bar_chart(result.get_counts())
 
-# ========== TAB 5: Challenge Mode ==========
+# ========== TAB 6: Challenge Mode ==========
 with tabs[5]:
     st.header("🎯 Quantum Challenge Mode")
     challenge = st.selectbox("Choose a challenge", ["Create a Bell State", "Flip qubit with one gate"])

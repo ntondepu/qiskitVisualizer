@@ -1,7 +1,7 @@
 import streamlit as st
 from qiskit import QuantumCircuit, Aer, execute, transpile
 from qiskit.visualization import plot_bloch_vector, plot_bloch_multivector
-from qiskit.quantum_info import Statevector, DensityMatrix, partial_trace
+from qiskit.quantum_info import partial_trace, bloch_vector
 from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, pauli_error
 from qiskit_ibm_provider import IBMProvider
 import matplotlib.pyplot as plt
@@ -62,14 +62,16 @@ with tabs[0]:
                 sim_result = execute(qc, sim_backend).result()
                 state_vector = sim_result.get_statevector()
                 st.subheader("Bloch Sphere (Final State)")
-                
+
                 num_qubits = qc.num_qubits
                 cols = st.columns(num_qubits)
-                
+
                 for i, col in enumerate(cols):
+                    # partial trace to get reduced density matrix for qubit i
                     reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
-                    bloch_vec = DensityMatrix(reduced_dm).to_bloch_vector()
+                    bloch_vec = bloch_vector(reduced_dm)
                     fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
+                    fig.set_size_inches(3,3)  # smaller figure
                     col.pyplot(fig)
 
         except Exception as e:
@@ -121,22 +123,24 @@ with tabs[1]:
     st.subheader("🧠 Step-by-Step Explanation")
     for step in explanations:
         st.write("- " + step)
-        
+
+    # Show Bloch spheres if no measurement
     if not measure:
-        # Show Bloch spheres side by side for each qubit
-        st.subheader("Bloch Sphere (Final State)")
+        st.subheader("Bloch Sphere(s) of Final State")
         sim_backend = Aer.get_backend('statevector_simulator')
         sim_result = execute(qc, sim_backend).result()
         state_vector = sim_result.get_statevector()
+
         cols = st.columns(num_qubits)
         for i, col in enumerate(cols):
             reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
-            bloch_vec = DensityMatrix(reduced_dm).to_bloch_vector()
+            bloch_vec = bloch_vector(reduced_dm)
             fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
+            fig.set_size_inches(3,3)
             col.pyplot(fig)
 
 # ========== TAB 3: Optimize ==========
-with tabs[2]:  # Remember tab index shifted since Step-by-Step removed
+with tabs[2]:  # shifted index since we removed step-by-step tab
     st.header("🚀 Optimized Circuit")
     if 'qc' in locals():
         optimized = transpile(qc, optimization_level=3)

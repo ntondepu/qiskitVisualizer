@@ -9,16 +9,16 @@ import matplotlib.pyplot as plt
 
 # ============ CONFIG =============
 st.set_page_config(page_title="Quantum Learning Platform", layout="wide")
-st.title("🧠 Quantum Learning Platform")
+st.title("Quantum Learning Platform")
 
 # ============ TABS =============
 tabs = st.tabs([
-    "📤 Upload QASM File",
-    "🧱 Build Circuit",
-    "🚀 Optimize Circuit",
-    "🌐 Run on IBM Quantum",
-    "🧪 Noise Simulation",
-    "🎯 Challenge Mode"
+    "Upload QASM File",
+    "Build Circuit",
+    "Optimize Circuit",
+    "Noise Simulation",
+    "Challenge Mode",
+    "Run on IBM Quantum"
 ])
 
 def explain_gate(gate, target, control):
@@ -90,7 +90,7 @@ with tabs[0]:
 
 # ========== TAB 1: Build Circuit ==========
 with tabs[1]:
-    st.sidebar.header("🎛️ Circuit Builder")
+    st.sidebar.header("Circuit Builder")
     num_qubits = st.sidebar.number_input("Number of Qubits", min_value=1, max_value=5, value=2)
     st.sidebar.subheader("Add Up to 15 Gates by Position")
     gate_instructions = []
@@ -128,10 +128,10 @@ with tabs[1]:
         for i in range(num_qubits):
             qc.measure(i, i)
 
-    st.subheader("🧩 Generated Circuit")
+    st.subheader("Generated Circuit")
     st.pyplot(qc.draw(output="mpl"))
 
-    st.subheader("🧠 Step-by-Step Explanation")
+    st.subheader("Step-by-Step Explanation")
     for step in explanations:
         st.write("- " + step)
 
@@ -154,9 +154,9 @@ with tabs[1]:
     else:
         st.info("Bloch sphere visualization skipped (circuit contains measurements)")
 
-# ========== TAB 2: Optimize ==========
+# ========== TAB 2: Optimize Circuit ==========
 with tabs[2]:
-    st.header("🚀 Optimized Circuit")
+    st.header("Optimized Circuit")
     if 'qc' in locals():
         optimized = transpile(qc, optimization_level=3)
         st.write("Before Optimization: ", len(qc.data), " gates")
@@ -165,26 +165,9 @@ with tabs[2]:
     else:
         st.info("Build or upload a circuit first to optimize.")
 
-# ========== TAB 3: IBM Quantum Run ==========
+# ========== TAB 3: Noise Simulation ==========
 with tabs[3]:
-    st.header("🌐 Run on IBM Quantum")
-    st.warning("You need an IBM Quantum account and API token to use this feature.")
-    token = st.text_input("Enter your IBM Quantum API Token:", type="password")
-    if token:
-        try:
-            provider = IBMProvider(token=token)
-            backend = provider.get_backend("ibmq_qasm_simulator")
-            job = backend.run(qc, shots=1024)
-            result = job.result()
-            counts = result.get_counts()
-            st.subheader("IBM Simulator Results")
-            st.bar_chart(counts)
-        except Exception as e:
-            st.error(f"Failed to connect or run: {e}")
-
-# ========== TAB 4: Noise Simulation ==========
-with tabs[4]:
-    st.header("🧪 Simulate Quantum Noise")
+    st.header("Simulate Quantum Noise")
     noise_model = NoiseModel()
     if st.checkbox("Add Bit-flip Noise"):
         noise_model.add_all_qubit_quantum_error(pauli_error([("X", 0.01), ("I", 0.99)]), ["x"])
@@ -194,33 +177,83 @@ with tabs[4]:
         error = pauli_error([("X", 0.1), ("I", 0.9)])
         noise_model.add_all_qubit_readout_error(error)
 
-    backend = Aer.get_backend('qasm_simulator')
-    job = execute(qc, backend, noise_model=noise_model, shots=1024)
-    result = job.result()
-    st.subheader("Results with Noise")
-    st.bar_chart(result.get_counts())
+    if 'qc' not in locals():
+        st.info("Build or upload a circuit first to simulate noise.")
+    else:
+        backend = Aer.get_backend('qasm_simulator')
+        job = execute(qc, backend, noise_model=noise_model, shots=1024)
+        result = job.result()
+        st.subheader("Results with Noise")
+        st.bar_chart(result.get_counts())
 
-# ========== TAB 5: Challenge Mode ==========
-with tabs[5]:
-    st.header("🎯 Quantum Challenge Mode")
+# ========== TAB 4: Challenge Mode ==========
+with tabs[4]:
+    st.header("Quantum Challenge Mode")
     challenge = st.selectbox("Choose a challenge", ["Create a Bell State", "Flip qubit with one gate"])
+
     if challenge == "Create a Bell State":
         st.markdown("Hint: Use H and CX gates")
         expected = {'00': 512, '11': 512}
     elif challenge == "Flip qubit with one gate":
         st.markdown("Hint: Try the X gate")
-        expected = {'1': 1024}
+        expected = {'1': 1024, '0': 0}
 
     run = st.button("Run My Circuit")
+
     if run:
-        if has_measurement(qc):
+        if 'qc' not in locals():
+            st.error("Please build or upload a circuit first!")
+        elif not has_measurement(qc):
+            st.error("The circuit must contain measurements to run the challenge.")
+        else:
             backend = Aer.get_backend('qasm_simulator')
             result = execute(qc, backend, shots=1024).result()
             counts = result.get_counts()
+
+            st.subheader("Measurement Results")
             st.bar_chart(counts)
-            if all(k in counts for k in expected):
-                st.success("✅ Challenge passed!")
+
+            passed = True
+            for key, exp_count in expected.items():
+                if counts.get(key, 0) < 0.8 * exp_count:
+                    passed = False
+                    break
+
+            if passed:
+                st.success("Challenge passed!")
             else:
-                st.error("❌ Not quite. Try again!")
+                st.error("Not quite. Try again!")
+
+# ========== TAB 5: Run on IBM Quantum ==========
+with tabs[5]:
+    st.header("Run Your Circuit on IBM Quantum")
+    st.markdown("""
+    To run your circuit on a real IBM Quantum device or simulator, you need an IBM Quantum account and an API token.
+    
+    Steps to get your IBM Quantum API token:
+    1. Go to https://quantum-computing.ibm.com/
+    2. Sign up or log in to your IBM Quantum account.
+    3. Click your profile icon on the top-right and select 'Account'.
+    4. Scroll down to the 'API Token' section.
+    5. Copy your API token.
+    
+    Enter your API token below to run your circuit on the IBM Quantum backend.
+    """)
+
+    token = st.text_input("Enter your IBM Quantum API Token:", type="password")
+    if token:
+        if 'qc' not in locals():
+            st.error("Please build or upload a circuit first!")
+        elif not has_measurement(qc):
+            st.error("The circuit must contain measurements to run on IBM Quantum backend.")
         else:
-            st.error("The circuit must contain measurements to run the challenge.")
+            try:
+                provider = IBMProvider(token=token)
+                backend = provider.get_backend("ibmq_qasm_simulator")
+                job = backend.run(qc, shots=1024)
+                result = job.result()
+                counts = result.get_counts()
+                st.subheader("IBM Quantum Run Results")
+                st.bar_chart(counts)
+            except Exception as e:
+                st.error(f"Failed to connect or run: {e}")

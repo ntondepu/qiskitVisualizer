@@ -1,9 +1,10 @@
 import streamlit as st
 from qiskit import QuantumCircuit, Aer, execute, transpile
-from qiskit.visualization import plot_bloch_vector, plot_bloch_multivector
-from qiskit.quantum_info import partial_trace, bloch_vector
+from qiskit.visualization import plot_bloch_vector
+from qiskit.quantum_info import partial_trace, DensityMatrix
 from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, pauli_error
 from qiskit_ibm_provider import IBMProvider
+import numpy as np
 import matplotlib.pyplot as plt
 
 # ============ CONFIG =============
@@ -12,11 +13,11 @@ st.title("🧠 Quantum Learning Platform")
 
 # ============ TABS =============
 tabs = st.tabs([
-    "📤 Upload QASM File", 
-    "🧱 Build Circuit", 
-    "🚀 Optimize Circuit", 
-    "🌐 Run on IBM Quantum", 
-    "🧪 Noise Simulation", 
+    "📤 Upload QASM File",
+    "🧱 Build Circuit",
+    "🚀 Optimize Circuit",
+    "🌐 Run on IBM Quantum",
+    "🧪 Noise Simulation",
     "🎯 Challenge Mode"
 ])
 
@@ -37,6 +38,15 @@ def explain_gate(gate, target, control):
 
 def has_measurement(circuit):
     return any(inst.operation.name == 'measure' for inst in circuit.data)
+
+def get_bloch_vector(rho):
+    """Compute the Bloch vector from a single-qubit density matrix."""
+    paulis = [
+        np.array([[0, 1], [1, 0]]),        # X
+        np.array([[0, -1j], [1j, 0]]),    # Y
+        np.array([[1, 0], [0, -1]])        # Z
+    ]
+    return np.array([np.trace(rho.data @ p).real for p in paulis])
 
 # ========== TAB 0: Upload QASM ==========
 with tabs[0]:
@@ -61,18 +71,19 @@ with tabs[0]:
                 sim_backend = Aer.get_backend('statevector_simulator')
                 sim_result = execute(qc, sim_backend).result()
                 state_vector = sim_result.get_statevector()
-                st.subheader("Bloch Sphere (Final State)")
-
                 num_qubits = qc.num_qubits
-                cols = st.columns(num_qubits)
 
-                for i, col in enumerate(cols):
-                    # partial trace to get reduced density matrix for qubit i
+                st.subheader("Bloch Sphere (Final State of Each Qubit)")
+                cols = st.columns(min(num_qubits, 5))  # max 5 side-by-side
+                for i in range(num_qubits):
                     reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
-                    bloch_vec = bloch_vector(reduced_dm)
+                    dm = DensityMatrix(reduced_dm)
+                    bloch_vec = get_bloch_vector(dm)
+
                     fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
-                    fig.set_size_inches(3,3)  # smaller figure
-                    col.pyplot(fig)
+                    fig.set_size_inches(3, 3)
+                    with cols[i % 5]:
+                        st.pyplot(fig)
 
         except Exception as e:
             st.error(f"Error: {e}")
@@ -124,31 +135,37 @@ with tabs[1]:
     for step in explanations:
         st.write("- " + step)
 
-    # Show Bloch spheres if no measurement
     if not measure:
-        st.subheader("Bloch Sphere(s) of Final State")
         sim_backend = Aer.get_backend('statevector_simulator')
         sim_result = execute(qc, sim_backend).result()
         state_vector = sim_result.get_statevector()
 
-        cols = st.columns(num_qubits)
-        for i, col in enumerate(cols):
+        st.subheader("Bloch Sphere (Final State of Each Qubit)")
+        cols = st.columns(min(num_qubits, 5))  # max 5 side-by-side
+        for i in range(num_qubits):
             reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
-            bloch_vec = bloch_vector(reduced_dm)
-            fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
-            fig.set_size_inches(3,3)
-            col.pyplot(fig)
+            dm = DensityMatrix(reduced_dm)
+            bloch_vec = get_bloch_vector(dm)
 
-# ========== TAB 3: Optimize ==========
-with tabs[2]:  # shifted index since we removed step-by-step tab
+            fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
+            fig.set_size_inches(3, 3)
+            with cols[i % 5]:
+                st.pyplot(fig)
+    else:
+        st.info("Bloch sphere visualization skipped (circuit contains measurements)")
+
+# ========== TAB 2: Optimize ==========
+with tabs[2]:
     st.header("🚀 Optimized Circuit")
     if 'qc' in locals():
         optimized = transpile(qc, optimization_level=3)
         st.write("Before Optimization: ", len(qc.data), " gates")
         st.write("After Optimization: ", len(optimized.data), " gates")
         st.pyplot(optimized.draw(output="mpl"))
+    else:
+        st.info("Build or upload a circuit first to optimize.")
 
-# ========== TAB 4: IBM Quantum Run ==========
+# ========== TAB 3: IBM Quantum Run ==========
 with tabs[3]:
     st.header("🌐 Run on IBM Quantum")
     st.warning("You need an IBM Quantum account and API token to use this feature.")
@@ -165,7 +182,7 @@ with tabs[3]:
         except Exception as e:
             st.error(f"Failed to connect or run: {e}")
 
-# ========== TAB 5: Noise Simulation ==========
+# ========== TAB 4: Noise Simulation ==========
 with tabs[4]:
     st.header("🧪 Simulate Quantum Noise")
     noise_model = NoiseModel()
@@ -183,7 +200,7 @@ with tabs[4]:
     st.subheader("Results with Noise")
     st.bar_chart(result.get_counts())
 
-# ========== TAB 6: Challenge Mode ==========
+# ========== TAB 5: Challenge Mode ==========
 with tabs[5]:
     st.header("🎯 Quantum Challenge Mode")
     challenge = st.selectbox("Choose a challenge", ["Create a Bell State", "Flip qubit with one gate"])

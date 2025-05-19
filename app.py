@@ -6,7 +6,6 @@ from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, thermal_r
 from qiskit_ibm_provider import IBMProvider
 import numpy as np
 import matplotlib.pyplot as plt
-import streamlit as st
 
 # ============ CONFIG =============
 st.set_page_config(page_title="Quantum Learning Platform", layout="wide")
@@ -38,7 +37,10 @@ def explain_gate(gate, target, control):
         return f"SWAP between q[{control}] and q[{target}] → Swaps their states."
     return ""
 
-# ========== TAB 1: Upload QASM ==========
+def has_measurement(circuit):
+    return any(inst.operation.name == 'measure' for inst in circuit.data)
+
+# ========== TAB 0: Upload QASM ==========
 with tabs[0]:
     uploaded_file = st.file_uploader("Upload your QASM file (.qasm)", type=["qasm"])
     if uploaded_file is not None:
@@ -50,25 +52,24 @@ with tabs[0]:
             st.write(f"Number of qubits: {qc.num_qubits}")
             st.write(f"Number of gates: {qc.size()}")
 
-            backend = Aer.get_backend('qasm_simulator')
-            result = execute(qc, backend, shots=1024).result()
-            counts = result.get_counts()
-            st.subheader("Measurement Results")
-            st.bar_chart(counts)
-
-            if not any(inst.operation.name == 'measure' for inst in qc.data):
+            if has_measurement(qc):
+                backend = Aer.get_backend('qasm_simulator')
+                result = execute(qc, backend, shots=1024).result()
+                counts = result.get_counts()
+                st.subheader("Measurement Results")
+                st.bar_chart(counts)
+                st.info("Bloch sphere visualization skipped (circuit contains measurements)")
+            else:
                 sim_backend = Aer.get_backend('statevector_simulator')
                 sim_result = execute(qc, sim_backend).result()
                 state_vector = sim_result.get_statevector()
                 st.subheader("Bloch Sphere (Final State)")
                 st.pyplot(plot_bloch_multivector(state_vector))
-            else:
-                st.info("Bloch sphere visualization skipped (circuit contains measurements)")
 
         except Exception as e:
             st.error(f"Error: {e}")
 
-# ========== TAB 2: Build Circuit ==========
+# ========== TAB 1: Build Circuit ==========
 with tabs[1]:
     st.sidebar.header("🎛️ Circuit Builder")
     num_qubits = st.sidebar.number_input("Number of Qubits", min_value=1, max_value=5, value=2)
@@ -172,11 +173,14 @@ with tabs[6]:
 
     run = st.button("Run My Circuit")
     if run:
-        backend = Aer.get_backend('qasm_simulator')
-        result = execute(qc, backend, shots=1024).result()
-        counts = result.get_counts()
-        st.bar_chart(counts)
-        if all(k in counts for k in expected):
-            st.success("✅ Challenge passed!")
+        if has_measurement(qc):
+            backend = Aer.get_backend('qasm_simulator')
+            result = execute(qc, backend, shots=1024).result()
+            counts = result.get_counts()
+            st.bar_chart(counts)
+            if all(k in counts for k in expected):
+                st.success("✅ Challenge passed!")
+            else:
+                st.error("❌ Not quite. Try again!")
         else:
-            st.error("❌ Not quite. Try again!")
+            st.error("The circuit must contain measurements to run the challenge.")

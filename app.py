@@ -9,7 +9,7 @@ import torch
 
 # ============ CONFIG =============
 st.set_page_config(page_title="Quantum Learning Platform", layout="wide")
-st.title("🧠 Quantum Learning Platform with Local Chatbot")
+st.title("Quantum Learning Platform")
 
 # ============ Load Local AI Model ============
 @st.cache_resource(show_spinner=False)
@@ -37,7 +37,7 @@ qa_pairs = {
 
 # ============ TABS =============
 tab_upload, tab_build, tab_info, tab_chat = st.tabs(
-    ["📤 Upload QASM File", "🧱 Build Circuit", "📚 Quantum Info", "🤖 Ask Local Chatbot"]
+    ["Upload QASM File", "Build Circuit", "Quantum Info", "Ask Local Chatbot"]
 )
 
 # ========== TAB 1: Upload QASM ==========
@@ -72,7 +72,7 @@ with tab_upload:
 
 # ========== TAB 2: Build Circuit ==========
 with tab_build:
-    st.sidebar.header("🎛️ Circuit Builder")
+    st.sidebar.header("Circuit Builder")
     num_qubits = st.sidebar.number_input("Number of Qubits", min_value=1, max_value=5, value=2)
 
     st.sidebar.subheader("Add Up to 15 Gates by Position")
@@ -108,7 +108,7 @@ with tab_build:
         for i in range(num_qubits):
             qc.measure(i, i)
 
-    st.subheader("🧩 Generated Circuit")
+    st.subheader("Generated Circuit")
     st.pyplot(qc.draw(output="mpl"))
 
     st.write(f"The circuit consists of {len(qc.data)} gate operations.")
@@ -121,7 +121,7 @@ with tab_build:
 
     if not measure:
         if num_qubits == 1:
-            st.subheader("🎬 Gate-by-Gate Bloch Sphere Animation")
+            st.subheader("Gate-by-Gate Bloch Sphere Animation")
             state = Statevector.from_label('0')
             for idx, instruction in enumerate(qc.data):
                 state = state.evolve(instruction)
@@ -144,7 +144,7 @@ with tab_build:
                 fig = plot_bloch_vector(bloch_vector, title=f"Qubit {i}")
                 st.pyplot(fig)
     else:
-        st.subheader("📊 Measurement Results")
+        st.subheader("Measurement Results")
         backend = Aer.get_backend('qasm_simulator')
         result = execute(qc, backend, shots=1024).result()
         counts = result.get_counts()
@@ -203,7 +203,7 @@ This collapse is irreversible and destroys the quantum state, which is why measu
 
 # ========== TAB 4: Local AI Chatbot ==========
 with tab_chat:
-    st.header("🤖 Ask the Local Quantum Chatbot")
+    st.header("Ask the Local Quantum Chatbot")
 
     if "local_chat_history" not in st.session_state:
         st.session_state.local_chat_history = []

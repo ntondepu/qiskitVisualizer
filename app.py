@@ -4,30 +4,12 @@ from qiskit.visualization import plot_bloch_vector, plot_bloch_multivector
 from qiskit.quantum_info import Statevector, Pauli, partial_trace
 import numpy as np
 import matplotlib.pyplot as plt
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
 
 # ============ CONFIG =============
 st.set_page_config(page_title="Quantum Learning Platform", layout="wide")
-st.title("Quantum Learning Platform")
+st.title("🧠 Quantum Learning Platform")
 
-# ============ Load Local AI Model ============
-@st.cache_resource(show_spinner=False)
-def load_model():
-    tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-small")
-    model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-small")
-    return tokenizer, model
-
-tokenizer, model = load_model()
-
-def local_chatbot_response(chat_history_ids, new_input):
-    new_input_ids = tokenizer.encode(new_input + tokenizer.eos_token, return_tensors='pt')
-    bot_input_ids = torch.cat([chat_history_ids, new_input_ids], dim=-1) if chat_history_ids is not None else new_input_ids
-    chat_history_ids = model.generate(bot_input_ids, max_length=1000, pad_token_id=tokenizer.eos_token_id)
-    response = tokenizer.decode(chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
-    return response, chat_history_ids
-
-# ============ Q&A Knowledge Base ============
+# ============ Q&A Knowledge Base =============
 qa_pairs = {
     "what is quantum computing": "Quantum computing uses quantum bits or qubits that can be in superpositions, enabling powerful parallel computations.",
     "what is a qubit": "A qubit is the quantum version of a classical bit. Unlike a bit, it can exist in a superposition of 0 and 1.",
@@ -36,8 +18,8 @@ qa_pairs = {
 }
 
 # ============ TABS =============
-tab_upload, tab_build, tab_info, tab_chat = st.tabs(
-    ["Upload QASM File", "Build Circuit", "Quantum Info", "Ask Local Chatbot"]
+tab_upload, tab_build, tab_info = st.tabs(
+    ["📤 Upload QASM File", "🧱 Build Circuit", "📚 Quantum Info"]
 )
 
 # ========== TAB 1: Upload QASM ==========
@@ -72,7 +54,7 @@ with tab_upload:
 
 # ========== TAB 2: Build Circuit ==========
 with tab_build:
-    st.sidebar.header("Circuit Builder")
+    st.sidebar.header("🎛️ Circuit Builder")
     num_qubits = st.sidebar.number_input("Number of Qubits", min_value=1, max_value=5, value=2)
 
     st.sidebar.subheader("Add Up to 15 Gates by Position")
@@ -108,7 +90,7 @@ with tab_build:
         for i in range(num_qubits):
             qc.measure(i, i)
 
-    st.subheader("Generated Circuit")
+    st.subheader("🧩 Generated Circuit")
     st.pyplot(qc.draw(output="mpl"))
 
     st.write(f"The circuit consists of {len(qc.data)} gate operations.")
@@ -121,7 +103,7 @@ with tab_build:
 
     if not measure:
         if num_qubits == 1:
-            st.subheader("Gate-by-Gate Bloch Sphere Animation")
+            st.subheader("🎬 Gate-by-Gate Bloch Sphere Animation")
             state = Statevector.from_label('0')
             for idx, instruction in enumerate(qc.data):
                 state = state.evolve(instruction)
@@ -144,7 +126,7 @@ with tab_build:
                 fig = plot_bloch_vector(bloch_vector, title=f"Qubit {i}")
                 st.pyplot(fig)
     else:
-        st.subheader("Measurement Results")
+        st.subheader("📊 Measurement Results")
         backend = Aer.get_backend('qasm_simulator')
         result = execute(qc, backend, shots=1024).result()
         counts = result.get_counts()
@@ -200,27 +182,3 @@ This collapse is irreversible and destroys the quantum state, which is why measu
     }
 
     st.markdown(info[topic])
-
-# ========== TAB 4: Local AI Chatbot ==========
-with tab_chat:
-    st.header("Ask the Local Quantum Chatbot")
-
-    if "local_chat_history" not in st.session_state:
-        st.session_state.local_chat_history = []
-        st.session_state.local_chat_ids = None
-
-    user_query = st.text_input("Enter your question about quantum computing:")
-
-    if user_query:
-        # Try knowledge base first
-        response = qa_pairs.get(user_query.lower())
-
-        # Fallback to DialoGPT if no match found
-        if not response:
-            response, st.session_state.local_chat_ids = local_chatbot_response(st.session_state.local_chat_ids, user_query)
-
-        st.session_state.local_chat_history.append(("You", user_query))
-        st.session_state.local_chat_history.append(("Bot", response))
-
-    for speaker, msg in st.session_state.local_chat_history:
-        st.markdown(f"**{speaker}:** {msg}")

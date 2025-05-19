@@ -75,31 +75,35 @@ with tab_build:
     st.sidebar.header("🎛️ Circuit Builder")
     num_qubits = st.sidebar.number_input("Number of Qubits", min_value=1, max_value=5, value=2)
 
-    st.sidebar.subheader("Number of Gates")
-    num_h = st.sidebar.number_input("Number of H gates on q[0]", min_value=0, max_value=5, value=1)
-    num_x = st.sidebar.number_input("Number of X gates on q[1]", min_value=0, max_value=5, value=1)
-    num_y = st.sidebar.number_input("Number of Y gates on q[0]", min_value=0, max_value=5, value=0)
-    num_z = st.sidebar.number_input("Number of Z gates on q[1]", min_value=0, max_value=5, value=0)
-    apply_cx = st.sidebar.checkbox("CX (q[0] → q[1])")
-    apply_swap = st.sidebar.checkbox("SWAP (q[0] ↔ q[1])")
-    measure = st.sidebar.checkbox("Add Measurement")
+    st.sidebar.subheader("Add Gates by Position")
+    gate_instructions = []
+    for i in range(5):
+        col = st.sidebar.columns(3)
+        gate_type = col[0].selectbox(f"Gate {i+1}", ["", "H", "X", "Y", "Z", "CX", "SWAP"])
+        target = col[1].number_input(f"q[{i+1}] target", min_value=0, max_value=num_qubits-1, step=1)
+        control = None
+        if gate_type in ["CX", "SWAP"]:
+            control = col[2].number_input(f"q[{i+1}] control", min_value=0, max_value=num_qubits-1, step=1)
+        if gate_type:
+            gate_instructions.append((gate_type, target, control))
 
+    measure = st.sidebar.checkbox("Add Measurement")
     qc = QuantumCircuit(num_qubits, num_qubits if measure else 0)
 
-    for _ in range(num_h):
-        qc.h(0)
-    for _ in range(num_x):
-        if num_qubits > 1:
-            qc.x(1)
-    for _ in range(num_y):
-        qc.y(0)
-    for _ in range(num_z):
-        if num_qubits > 1:
-            qc.z(1)
-    if apply_cx and num_qubits > 1:
-        qc.cx(0, 1)
-    if apply_swap and num_qubits > 1:
-        qc.swap(0, 1)
+    for gate, target, control in gate_instructions:
+        if gate == "H":
+            qc.h(target)
+        elif gate == "X":
+            qc.x(target)
+        elif gate == "Y":
+            qc.y(target)
+        elif gate == "Z":
+            qc.z(target)
+        elif gate == "CX" and control is not None:
+            qc.cx(control, target)
+        elif gate == "SWAP" and control is not None:
+            qc.swap(control, target)
+
     if measure:
         for i in range(num_qubits):
             qc.measure(i, i)

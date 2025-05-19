@@ -6,6 +6,7 @@ from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, thermal_r
 from qiskit_ibm_provider import IBMProvider
 import numpy as np
 import matplotlib.pyplot as plt
+import streamlit as st
 
 # ============ CONFIG =============
 st.set_page_config(page_title="Quantum Learning Platform", layout="wide")

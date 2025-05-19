@@ -1,9 +1,8 @@
 import streamlit as st
 from qiskit import QuantumCircuit, Aer, execute, transpile
-from qiskit.visualization import plot_bloch_vector, plot_bloch_multivector
-from qiskit.quantum_info import Statevector, Pauli, partial_trace
-from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, thermal_relaxation_error, pauli_error
+from qiskit.visualization import plot_bloch_multivector
 from qiskit_ibm_provider import IBMProvider
+from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, pauli_error
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -124,6 +123,8 @@ with tabs[3]:
         st.write("Before Optimization: ", len(qc.data), " gates")
         st.write("After Optimization: ", len(optimized.data), " gates")
         st.pyplot(optimized.draw(output="mpl"))
+    else:
+        st.info("No circuit loaded or built yet.")
 
 # ========== TAB 4: IBM Quantum Run ==========
 with tabs[4]:
@@ -136,9 +137,14 @@ with tabs[4]:
             backend = provider.get_backend("ibmq_qasm_simulator")
             job = backend.run(qc, shots=1024)
             result = job.result()
-            counts = result.get_counts()
-            st.subheader("IBM Simulator Results")
-            st.bar_chart(counts)
+
+            if has_measurement(qc):
+                counts = result.get_counts()
+                st.subheader("IBM Simulator Results")
+                st.bar_chart(counts)
+            else:
+                st.info("Circuit has no measurements; cannot display counts.")
+
         except Exception as e:
             st.error(f"Failed to connect or run: {e}")
 
@@ -157,8 +163,12 @@ with tabs[5]:
     backend = Aer.get_backend('qasm_simulator')
     job = execute(qc, backend, noise_model=noise_model, shots=1024)
     result = job.result()
-    st.subheader("Results with Noise")
-    st.bar_chart(result.get_counts())
+
+    if has_measurement(qc):
+        st.subheader("Results with Noise")
+        st.bar_chart(result.get_counts())
+    else:
+        st.info("Circuit has no measurements; cannot display counts.")
 
 # ========== TAB 6: Challenge Mode ==========
 with tabs[6]:

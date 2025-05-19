@@ -1,7 +1,9 @@
 import streamlit as st
-from qiskit import QuantumCircuit, Aer, execute
+from qiskit import QuantumCircuit, Aer, execute, transpile
 from qiskit.visualization import plot_bloch_vector, plot_bloch_multivector
 from qiskit.quantum_info import Statevector, Pauli, partial_trace
+from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, thermal_relaxation_error, pauli_error
+from qiskit_ibm_provider import IBMProvider
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -9,21 +11,34 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="Quantum Learning Platform", layout="wide")
 st.title("🧠 Quantum Learning Platform")
 
-# ============ Q&A Knowledge Base =============
-qa_pairs = {
-    "what is quantum computing": "Quantum computing uses quantum bits or qubits that can be in superpositions, enabling powerful parallel computations.",
-    "what is a qubit": "A qubit is the quantum version of a classical bit. Unlike a bit, it can exist in a superposition of 0 and 1.",
-    "what is a hadamard gate": "The Hadamard gate creates a superposition state. It transforms |0⟩ into (|0⟩ + |1⟩)/√2 and |1⟩ into (|0⟩ - |1⟩)/√2.",
-    "what is a measurement": "Measurement collapses a qubit's state into a definite classical value: either 0 or 1. It ends the quantum behavior."
-}
-
 # ============ TABS =============
-tab_upload, tab_build, tab_info = st.tabs(
-    ["📤 Upload QASM File", "🧱 Build Circuit", "📚 Quantum Info"]
-)
+tabs = st.tabs([
+    "📤 Upload QASM File", 
+    "🧱 Build Circuit", 
+    "🧠 Explain Step-by-Step", 
+    "🚀 Optimize Circuit", 
+    "🌐 Run on IBM Quantum", 
+    "🧪 Noise Simulation", 
+    "🎯 Challenge Mode"
+])
+
+def explain_gate(gate, target, control):
+    if gate == "H":
+        return f"H on q[{target}] → Creates superposition."
+    elif gate == "X":
+        return f"X on q[{target}] → Flips the qubit (|0⟩ ↔ |1⟩)."
+    elif gate == "Y":
+        return f"Y on q[{target}] → Applies a Y-rotation."
+    elif gate == "Z":
+        return f"Z on q[{target}] → Applies a Z phase flip."
+    elif gate == "CX":
+        return f"CX from q[{control}] to q[{target}] → Entangles qubits."
+    elif gate == "SWAP":
+        return f"SWAP between q[{control}] and q[{target}] → Swaps their states."
+    return ""
 
 # ========== TAB 1: Upload QASM ==========
-with tab_upload:
+with tabs[0]:
     uploaded_file = st.file_uploader("Upload your QASM file (.qasm)", type=["qasm"])
     if uploaded_file is not None:
         try:
@@ -53,12 +68,13 @@ with tab_upload:
             st.error(f"Error: {e}")
 
 # ========== TAB 2: Build Circuit ==========
-with tab_build:
+with tabs[1]:
     st.sidebar.header("🎛️ Circuit Builder")
     num_qubits = st.sidebar.number_input("Number of Qubits", min_value=1, max_value=5, value=2)
-
     st.sidebar.subheader("Add Up to 15 Gates by Position")
     gate_instructions = []
+    explanations = []
+
     for i in range(15):
         col = st.sidebar.columns(3)
         gate_type = col[0].selectbox(f"Gate {i+1}", ["", "H", "X", "Y", "Z", "CX", "SWAP"], key=f"gate_{i}")
@@ -68,6 +84,7 @@ with tab_build:
             control = col[2].number_input(f"q[{i}] control", min_value=0, max_value=num_qubits-1, step=1, key=f"control_{i}")
         if gate_type:
             gate_instructions.append((gate_type, target, control))
+            explanations.append(explain_gate(gate_type, target, control))
 
     measure = st.sidebar.checkbox("Add Measurement")
     qc = QuantumCircuit(num_qubits, num_qubits if measure else 0)
@@ -93,92 +110,72 @@ with tab_build:
     st.subheader("🧩 Generated Circuit")
     st.pyplot(qc.draw(output="mpl"))
 
-    st.write(f"The circuit consists of {len(qc.data)} gate operations.")
-    if any(gate[0] == 'H' for gate in gate_instructions):
-        st.info("This circuit includes Hadamard gates, so it may involve quantum superposition.")
-    if any(gate[0] == 'CX' for gate in gate_instructions):
-        st.info("This circuit includes CX gates, suggesting the presence of quantum entanglement.")
-    if measure:
-        st.info("Measurement gates collapse the quantum state into classical outcomes.")
+    st.subheader("🧠 Step-by-Step Explanation")
+    for step in explanations:
+        st.write("- " + step)
 
-    if not measure:
-        if num_qubits == 1:
-            st.subheader("🎬 Gate-by-Gate Bloch Sphere Animation")
-            state = Statevector.from_label('0')
-            for idx, instruction in enumerate(qc.data):
-                state = state.evolve(instruction)
-                bloch_vec = [
-                    2 * np.real(state.expectation_value(Pauli('X'))),
-                    2 * np.real(state.expectation_value(Pauli('Y'))),
-                    2 * np.real(state.expectation_value(Pauli('Z')))
-                ]
-                fig = plot_bloch_vector(bloch_vec, title=f"After gate {idx + 1}: {instruction.operation.name}")
-                st.pyplot(fig)
-        else:
-            st.subheader("🌀 Bloch Sphere (Final State)")
-            backend = Aer.get_backend('statevector_simulator')
-            result = execute(qc, backend).result()
-            statevector = result.get_statevector()
-            sv = Statevector(statevector)
-            for i in range(num_qubits):
-                traced = partial_trace(sv, [j for j in range(num_qubits) if j != i])
-                bloch_vector = [2 * np.real(traced.expectation_value(Pauli(p))) for p in ['X', 'Y', 'Z']]
-                fig = plot_bloch_vector(bloch_vector, title=f"Qubit {i}")
-                st.pyplot(fig)
-    else:
-        st.subheader("📊 Measurement Results")
+# ========== TAB 3: Optimize ==========
+with tabs[3]:
+    st.header("🚀 Optimized Circuit")
+    if 'qc' in locals():
+        optimized = transpile(qc, optimization_level=3)
+        st.write("Before Optimization: ", len(qc.data), " gates")
+        st.write("After Optimization: ", len(optimized.data), " gates")
+        st.pyplot(optimized.draw(output="mpl"))
+
+# ========== TAB 4: IBM Quantum Run ==========
+with tabs[4]:
+    st.header("🌐 Run on IBM Quantum")
+    st.warning("You need an IBM Quantum account and API token to use this feature.")
+    token = st.text_input("Enter your IBM Quantum API Token:", type="password")
+    if token:
+        try:
+            provider = IBMProvider(token=token)
+            backend = provider.get_backend("ibmq_qasm_simulator")
+            job = backend.run(qc, shots=1024)
+            result = job.result()
+            counts = result.get_counts()
+            st.subheader("IBM Simulator Results")
+            st.bar_chart(counts)
+        except Exception as e:
+            st.error(f"Failed to connect or run: {e}")
+
+# ========== TAB 5: Noise Simulation ==========
+with tabs[5]:
+    st.header("🧪 Simulate Quantum Noise")
+    noise_model = NoiseModel()
+    if st.checkbox("Add Bit-flip Noise"):
+        noise_model.add_all_qubit_quantum_error(pauli_error([("X", 0.01), ("I", 0.99)]), ["x"])
+    if st.checkbox("Add Depolarizing Noise"):
+        noise_model.add_all_qubit_quantum_error(depolarizing_error(0.02, 1), ["h", "x", "y", "z"])
+    if st.checkbox("Add Measurement Error"):
+        error = pauli_error([("X", 0.1), ("I", 0.9)])
+        noise_model.add_all_qubit_readout_error(error)
+
+    backend = Aer.get_backend('qasm_simulator')
+    job = execute(qc, backend, noise_model=noise_model, shots=1024)
+    result = job.result()
+    st.subheader("Results with Noise")
+    st.bar_chart(result.get_counts())
+
+# ========== TAB 6: Challenge Mode ==========
+with tabs[6]:
+    st.header("🎯 Quantum Challenge Mode")
+    challenge = st.selectbox("Choose a challenge", ["Create a Bell State", "Flip qubit with one gate"])
+    if challenge == "Create a Bell State":
+        st.markdown("Hint: Use H and CX gates")
+        expected = {'00': 512, '11': 512}
+    elif challenge == "Flip qubit with one gate":
+        st.markdown("Hint: Try the X gate")
+        expected = {'1': 1024}
+
+    run = st.button("Run My Circuit")
+    if run:
         backend = Aer.get_backend('qasm_simulator')
         result = execute(qc, backend, shots=1024).result()
         counts = result.get_counts()
         st.bar_chart(counts)
-
-    st.subheader("📥 Download QASM File")
-    qasm_str = qc.qasm()
-    st.download_button(
-        label="Download circuit as QASM",
-        data=qasm_str,
-        file_name="custom_circuit.qasm",
-        mime="text/plain"
-    )
-
-# ========== TAB 3: Quantum Info ==========
-with tab_info:
-    st.header("Quantum Concepts Explained")
-    topic = st.selectbox("Choose a topic", ["Hadamard Gate (H)", "Pauli-X Gate (X)", "Qubit", "Measurement"])
-
-    info = {
-        "Hadamard Gate (H)": """
-The Hadamard gate (H) is one of the fundamental single-qubit gates in quantum computing. It transforms the basis states |0⟩ and |1⟩ into equal superpositions:
-|0⟩ → (|0⟩ + |1⟩) / √2
-|1⟩ → (|0⟩ - |1⟩) / √2
-This ability to create superposition is key for many quantum algorithms that rely on parallelism.
-
-By applying the H gate, a qubit initially in a definite state can be put into a state where it simultaneously represents multiple possibilities. This gate is also its own inverse, meaning applying it twice returns the qubit to its original state.
-
-Understanding the Hadamard gate is essential for grasping the power of quantum interference and the behavior of quantum algorithms like the Deutsch-Jozsa and Grover's search algorithm.
-""",
-        "Pauli-X Gate (X)": """
-The Pauli-X gate acts as a quantum NOT gate, flipping the state of a qubit:
-|0⟩ ↔ |1⟩
-
-This gate is essential for manipulating qubits and is often used in constructing more complex operations. It corresponds to a rotation of the qubit's Bloch vector by π radians about the X-axis.
-
-The Pauli-X gate is also a key building block in quantum error correction and quantum algorithms, enabling the reversal or flipping of qubit states as needed.
-""",
-        "Qubit": """
-A qubit is the fundamental unit of quantum information, analogous to a classical bit but with much richer behavior.
-
-Unlike classical bits that are either 0 or 1, qubits can exist in a superposition of both states simultaneously, described by complex amplitudes. This superposition enables quantum computers to process a vast number of possibilities at once.
-
-Qubits also exhibit entanglement, a quantum phenomenon where the state of one qubit is intrinsically linked to another, regardless of distance. Together, superposition and entanglement provide the foundation for the power of quantum computation.
-""",
-        "Measurement": """
-Measurement in quantum computing is the process of extracting classical information from a qubit.
-
-When a qubit is measured, its superposition collapses probabilistically to either |0⟩ or |1⟩. The outcome depends on the probability amplitudes of the superposition state.
-
-This collapse is irreversible and destroys the quantum state, which is why measurements are typically deferred until the end of a quantum algorithm. Understanding measurement is crucial for interpreting quantum computations and designing algorithms.
-"""
-    }
-
-    st.markdown(info[topic])
+        if all(k in counts for k in expected):
+            st.success("✅ Challenge passed!")
+        else:
+            st.error("❌ Not quite. Try again!")

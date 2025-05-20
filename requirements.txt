@@ -1,6 +1,3 @@
 streamlit
 qiskit
 qiskit-aer
-qiskit-ibm-provider
-matplotlib
-numpy

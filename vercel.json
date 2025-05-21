@@ -2,26 +2,18 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/*.py",
+      "src": "quantum.py",
       "use": "@vercel/python",
-      "config": { 
+      "config": {
         "maxLambdaSize": "15mb",
         "pythonVersion": "3.10"
       }
-    },
-    {
-      "src": "public/*",
-      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "api/quantum.py"
-    },
-    {
       "src": "/(.*)",
-      "dest": "public/index.html"
+      "dest": "quantum.py"
     }
   ]
 }

@@ -5,7 +5,7 @@ from qiskit.providers.aer import Aer
 from qiskit.visualization import plot_bloch_vector
 from qiskit.quantum_info import partial_trace, DensityMatrix
 from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, pauli_error
-from qiskit_ibm_provider import IBMProvider
+from qiskit.providers.ibmq import IBMQ  # Changed from IBMProvider to legacy IBMQ
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -232,9 +232,11 @@ with tabs[5]:
     api_token = st.text_input("Enter your IBM Quantum API Token", type="password")
     if api_token:
         try:
-            # Save the token securely (overwrites any previous)
-            IBMProvider.save_account(token=api_token, overwrite=True)
-            provider = IBMProvider()
+            # Load or save the account using legacy IBMQ
+            if not IBMQ.stored_account():
+                IBMQ.save_account(api_token)
+            IBMQ.load_account()
+            provider = IBMQ.get_provider()
 
             # Filter backends: number of qubits >= qc.num_qubits and no simulators
             backend_names = [

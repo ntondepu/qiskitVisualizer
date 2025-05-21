@@ -9,6 +9,11 @@ from qiskit.quantum_info import partial_trace, DensityMatrix
 from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, pauli_error
 import numpy as np
 import matplotlib.pyplot as plt
+import warnings
+
+# Configure warnings
+warnings.filterwarnings('ignore', category=RuntimeWarning)
+np.seterr(all='ignore')  # Suppress numpy warnings
 
 # Requirements check
 try:
@@ -70,6 +75,16 @@ def get_bloch_vector(rho):
     except Exception:
         return np.zeros(3)
 
+def is_valid_state(state_vector):
+    """Check if a state vector is valid and can be visualized."""
+    if state_vector is None:
+        return False
+    if np.any(np.isnan(state_vector)) or np.any(np.isinf(state_vector)):
+        return False
+    if np.allclose(state_vector, np.zeros_like(state_vector)):
+        return False
+    return True
+
 # ========== TAB 0: Upload QASM ==========
 with tabs[0]:
     uploaded_file = st.file_uploader("Upload your QASM file (.qasm)", type=["qasm"])
@@ -77,8 +92,14 @@ with tabs[0]:
         try:
             qasm_str = uploaded_file.read().decode("utf-8")
             qc = QuantumCircuit.from_qasm_str(qasm_str)
+            
+            # Display circuit diagram
+            fig, ax = plt.subplots()
+            qc.draw(output='mpl', ax=ax)
             st.subheader("Circuit Diagram")
-            st.pyplot(qc.draw(output="mpl"))
+            st.pyplot(fig)
+            plt.close(fig)
+            
             st.write(f"Number of qubits: {qc.num_qubits}")
             st.write(f"Number of gates: {qc.size()}")
 
@@ -96,7 +117,7 @@ with tabs[0]:
                         sim_result = execute(qc, sim_backend).result()
                         state_vector = sim_result.get_statevector()
                         
-                        if np.any(np.isnan(state_vector)) or np.any(np.isinf(state_vector)):
+                        if not is_valid_state(state_vector):
                             st.error("Invalid state vector obtained - circuit may be numerically unstable")
                         else:
                             num_qubits = qc.num_qubits
@@ -105,8 +126,8 @@ with tabs[0]:
                             for i in range(num_qubits):
                                 try:
                                     reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
-                                    if np.allclose(reduced_dm.data, np.zeros_like(reduced_dm.data)):
-                                        st.warning(f"Qubit {i} has zero density matrix - cannot visualize")
+                                    if not is_valid_state(reduced_dm.data):
+                                        st.warning(f"Qubit {i} has invalid state - cannot visualize")
                                         continue
                                         
                                     dm = DensityMatrix(reduced_dm)
@@ -123,7 +144,7 @@ with tabs[0]:
                     st.error(f"Simulation failed: {str(e)}")
 
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Error loading QASM file: {e}")
 
 # ========== TAB 1: Build Circuit ==========
 with tabs[1]:
@@ -165,9 +186,12 @@ with tabs[1]:
         for i in range(num_qubits):
             qc.measure(i, i)
 
+    # Display circuit diagram
+    fig, ax = plt.subplots()
+    qc.draw(output='mpl', ax=ax)
     st.subheader("Generated Circuit")
-    st.pyplot(qc.draw(output="mpl"))
-    plt.close()
+    st.pyplot(fig)
+    plt.close(fig)
 
     st.subheader("Step-by-Step Explanation")
     for step in explanations:
@@ -180,7 +204,7 @@ with tabs[1]:
                 sim_result = execute(qc, sim_backend).result()
                 state_vector = sim_result.get_statevector()
                 
-                if np.any(np.isnan(state_vector)) or np.any(np.isinf(state_vector)):
+                if not is_valid_state(state_vector):
                     st.error("Invalid state vector obtained - circuit may be numerically unstable")
                 else:
                     st.subheader("Bloch Sphere (Final State of Each Qubit)")
@@ -188,8 +212,8 @@ with tabs[1]:
                     for i in range(num_qubits):
                         try:
                             reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
-                            if np.allclose(reduced_dm.data, np.zeros_like(reduced_dm.data)):
-                                st.warning(f"Qubit {i} has zero density matrix - cannot visualize")
+                            if not is_valid_state(reduced_dm.data):
+                                st.warning(f"Qubit {i} has invalid state - cannot visualize")
                                 continue
                                 
                             dm = DensityMatrix(reduced_dm)
@@ -214,8 +238,11 @@ with tabs[2]:
         optimized = transpile(qc, optimization_level=3)
         st.write("Before Optimization: ", len(qc.data), " gates")
         st.write("After Optimization: ", len(optimized.data), " gates")
-        st.pyplot(optimized.draw(output="mpl"))
-        plt.close()
+        
+        fig, ax = plt.subplots()
+        optimized.draw(output='mpl', ax=ax)
+        st.pyplot(fig)
+        plt.close(fig)
     else:
         st.info("Build or upload a circuit first to optimize.")
 

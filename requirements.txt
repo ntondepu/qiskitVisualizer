@@ -1,9 +1,8 @@
 streamlit>=1.25.0
-numpy==1.23.5  # Downgrade to version compatible with qiskit-ibmq-provider
+numpy==1.23.5
 matplotlib>=3.7.0
 qiskit==0.43.2
-qiskit-aer==0.12.1
+qiskit-aer==0.12.1 
 qiskit-terra==0.24.1
-qiskit-ibmq-provider==0.20.2
 pylatexenc>=2.10
 pillow>=10.0.0

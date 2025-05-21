@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')  # Set the backend to Agg for headless environments
 import streamlit as st
 from qiskit import QuantumCircuit, transpile
 from qiskit import execute
@@ -7,6 +9,16 @@ from qiskit.quantum_info import partial_trace, DensityMatrix
 from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, pauli_error
 import numpy as np
 import matplotlib.pyplot as plt
+
+# Requirements check
+try:
+    import qiskit
+    import matplotlib
+    import numpy
+    import streamlit
+except ImportError as e:
+    st.error(f"Missing required package: {e.name}. Please install all requirements.")
+    st.stop()
 
 # ============ CONFIG =============
 st.set_page_config(page_title="Quantum Learning Platform", layout="wide")
@@ -43,7 +55,7 @@ def get_bloch_vector(rho):
     """Compute the Bloch vector from a single-qubit density matrix."""
     paulis = [
         np.array([[0, 1], [1, 0]]),        # X
-        np.array([[0, -1j], [1j, 0]]),    # Y
+        np.array([[0, -1j], [1j, 0]]),     # Y
         np.array([[1, 0], [0, -1]])        # Z
     ]
     return np.array([np.trace(rho.data @ p).real for p in paulis])
@@ -76,14 +88,18 @@ with tabs[0]:
                 st.subheader("Bloch Sphere (Final State of Each Qubit)")
                 cols = st.columns(min(num_qubits, 5))  # max 5 side-by-side
                 for i in range(num_qubits):
-                    reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
-                    dm = DensityMatrix(reduced_dm)
-                    bloch_vec = get_bloch_vector(dm)
+                    try:
+                        reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
+                        dm = DensityMatrix(reduced_dm)
+                        bloch_vec = get_bloch_vector(dm)
 
-                    fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
-                    fig.set_size_inches(3, 3)
-                    with cols[i % 5]:
-                        st.pyplot(fig)
+                        fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
+                        fig.set_size_inches(3, 3)
+                        with cols[i % 5]:
+                            st.pyplot(fig)
+                        plt.close(fig)
+                    except Exception as e:
+                        st.error(f"Could not visualize qubit {i}: {str(e)}")
 
         except Exception as e:
             st.error(f"Error: {e}")
@@ -143,14 +159,18 @@ with tabs[1]:
         st.subheader("Bloch Sphere (Final State of Each Qubit)")
         cols = st.columns(min(num_qubits, 5))  # max 5 side-by-side
         for i in range(num_qubits):
-            reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
-            dm = DensityMatrix(reduced_dm)
-            bloch_vec = get_bloch_vector(dm)
+            try:
+                reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
+                dm = DensityMatrix(reduced_dm)
+                bloch_vec = get_bloch_vector(dm)
 
-            fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
-            fig.set_size_inches(3, 3)
-            with cols[i % 5]:
-                st.pyplot(fig)
+                fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
+                fig.set_size_inches(3, 3)
+                with cols[i % 5]:
+                    st.pyplot(fig)
+                plt.close(fig)
+            except Exception as e:
+                st.error(f"Could not visualize qubit {i}: {str(e)}")
     else:
         st.info("Bloch sphere visualization skipped (circuit contains measurements)")
 
@@ -162,6 +182,7 @@ with tabs[2]:
         st.write("Before Optimization: ", len(qc.data), " gates")
         st.write("After Optimization: ", len(optimized.data), " gates")
         st.pyplot(optimized.draw(output="mpl"))
+        plt.close()
     else:
         st.info("Build or upload a circuit first to optimize.")
 
@@ -180,13 +201,17 @@ with tabs[3]:
     backend = Aer.get_backend('qasm_simulator')
 
     # Ensure circuit has measurements before running
-    if not has_measurement(qc):
-        qc.measure_all()
+    if 'qc' in locals():
+        temp_qc = qc.copy()
+        if not has_measurement(temp_qc):
+            temp_qc.measure_all()
 
-    job = execute(qc, backend, noise_model=noise_model, shots=1024)
-    result = job.result()
-    st.subheader("Results with Noise")
-    st.bar_chart(result.get_counts())
+        job = execute(temp_qc, backend, noise_model=noise_model, shots=1024)
+        result = job.result()
+        st.subheader("Results with Noise")
+        st.bar_chart(result.get_counts())
+    else:
+        st.info("Build or upload a circuit first to simulate noise.")
 
 # ========== TAB 4: Challenge Mode ==========
 with tabs[4]:
@@ -200,7 +225,7 @@ with tabs[4]:
         expected = {'1': 1024}
 
     run = st.button("Run My Circuit")
-    if run:
+    if run and 'qc' in locals():
         if has_measurement(qc):
             backend = Aer.get_backend('qasm_simulator')
             result = execute(qc, backend, shots=1024).result()
@@ -212,4 +237,5 @@ with tabs[4]:
                 st.warning("Try again!")
         else:
             st.warning("Add measurement to verify results!")
-
+    elif run:
+        st.warning("Build or upload a circuit first!")

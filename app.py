@@ -5,7 +5,6 @@ from qiskit.providers.aer import Aer
 from qiskit.visualization import plot_bloch_vector
 from qiskit.quantum_info import partial_trace, DensityMatrix
 from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, pauli_error
-from qiskit.providers.ibmq import IBMQ  # Changed from IBMProvider to legacy IBMQ
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -20,7 +19,6 @@ tabs = st.tabs([
     "Optimize Circuit",
     "Noise Simulation",
     "Challenge Mode",
-    "Run on IBM Quantum"
 ])
 
 def explain_gate(gate, target, control):
@@ -215,51 +213,3 @@ with tabs[4]:
         else:
             st.warning("Add measurement to verify results!")
 
-# ========== TAB 5: Run on IBM Quantum ==========
-with tabs[5]:
-    st.header("Run on IBM Quantum Hardware")
-    st.markdown("""
-    ### How to Get Your IBM Quantum API Token
-    1. Visit [IBM Quantum Experience](https://quantum-computing.ibm.com/) and log in or create an account.
-    2. Click your profile icon (top right) and select **Account**.
-    3. Scroll to the **API Token** section.
-    4. Click the copy icon to copy your token.
-    5. Paste your token below to connect.
-    
-    **Keep your token private!**
-    """)
-
-    api_token = st.text_input("Enter your IBM Quantum API Token", type="password")
-    if api_token:
-        try:
-            # Load or save the account using legacy IBMQ
-            if not IBMQ.stored_account():
-                IBMQ.save_account(api_token)
-            IBMQ.load_account()
-            provider = IBMQ.get_provider()
-
-            # Filter backends: number of qubits >= qc.num_qubits and no simulators
-            backend_names = [
-                b.name() for b in provider.backends(
-                    filters=lambda x: x.configuration().n_qubits >= qc.num_qubits and not x.configuration().simulator
-                )
-            ]
-
-            if not backend_names:
-                st.warning("No suitable IBM Quantum backends available for your circuit qubit count.")
-            else:
-                selected_backend = st.selectbox("Select IBM Quantum Backend", backend_names)
-                shots = st.number_input("Shots", min_value=1, max_value=8192, value=1024)
-
-                if st.button("Run on IBM Quantum"):
-                    backend = provider.get_backend(selected_backend)
-                    transpiled = transpile(qc, backend=backend)
-                    job = backend.run(transpiled, shots=shots)
-                    st.write(f"Job ID: {job.job_id()}")
-                    with st.spinner("Waiting for job result..."):
-                        result = job.result()
-                    counts = result.get_counts()
-                    st.subheader("Result Counts")
-                    st.bar_chart(counts)
-        except Exception as e:
-            st.error(f"Error connecting or running job: {e}")

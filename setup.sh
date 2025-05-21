@@ -1,4 +1,4 @@
 #!/bin/bash
-pip install --upgrade pip
-pip install wheel setuptools
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install wheel setuptools
+python -m pip install --prefer-binary -r requirements.txt

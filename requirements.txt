@@ -3,7 +3,7 @@ numpy>=1.23.5
 matplotlib>=3.7.0
 qiskit==1.0.2
 qiskit-aer==0.13.2
-qiskit-terra==1.0.3
+qiskit-terra>=1.0.0
 pylatexenc>=2.10
 pillow>=10.0.0
 scipy>=1.10.0

@@ -1,6 +1,5 @@
 import streamlit as st
-from qiskit import QuantumCircuit, transpile
-from qiskit.compiler import execute
+from qiskit import QuantumCircuit, transpile, execute
 from qiskit.providers.aer import Aer
 from qiskit.visualization import plot_bloch_vector
 from qiskit.quantum_info import partial_trace, DensityMatrix
@@ -208,38 +207,29 @@ with tabs[4]:
             result = execute(qc, backend, shots=1024).result()
             counts = result.get_counts()
             st.bar_chart(counts)
-            if all(k in counts for k in expected):
+            if counts == expected:
                 st.success("Challenge passed!")
             else:
-                st.error("Not quite. Try again!")
+                st.warning("Try again!")
         else:
-            st.error("The circuit must contain measurements to run the challenge.")
+            st.warning("Add measurement to verify results!")
 
 # ========== TAB 5: Run on IBM Quantum ==========
 with tabs[5]:
-    st.header("Run on IBM Quantum")
-    st.markdown("""
-    To use this feature, you need an IBM Quantum account and API token.
-    1. Sign up or log in at [IBM Quantum](https://quantum-computing.ibm.com/).
-    2. Click on your account icon (top right) → `Account`.
-    3. Find your API token and copy it.
-    4. Paste the token below to connect.
-    """)
+    st.header("Run on IBM Quantum Hardware")
+    api_token = st.text_input("Enter your IBM Quantum API Token", type="password")
+    if api_token:
+        IBMProvider.save_account(token=api_token, overwrite=True)
+        provider = IBMProvider()
+        backend_names = [b.name() for b in provider.backends(filters=lambda x: x.configuration().n_qubits >= qc.num_qubits and not x.configuration().simulator)]
+        selected_backend = st.selectbox("Select IBM Quantum Backend", backend_names)
+        shots = st.number_input("Shots", min_value=1, max_value=8192, value=1024)
 
-    token = st.text_input("Enter your IBM Quantum API Token:", type="password")
-    if token:
-        try:
-            provider = IBMProvider(token=token)
-            backend = provider.get_backend("ibmq_qasm_simulator")
-
-            # Ensure measurement before running
-            if not has_measurement(qc):
-                qc.measure_all()
-
-            job = backend.run(qc, shots=1024)
+        if st.button("Run on IBM Quantum"):
+            backend = provider.get_backend(selected_backend)
+            transpiled = transpile(qc, backend=backend)
+            job = backend.run(transpiled, shots=shots)
+            st.write(f"Job ID: {job.job_id()}")
             result = job.result()
             counts = result.get_counts()
-            st.subheader("IBM Quantum Simulator Results")
             st.bar_chart(counts)
-        except Exception as e:
-            st.error(f"Failed to connect or run: {e}")

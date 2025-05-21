@@ -1,6 +1,6 @@
 import streamlit as st
 from qiskit import QuantumCircuit, transpile
-from qiskit.utils import execute
+from qiskit.compiler import execute
 from qiskit.providers.aer import Aer
 from qiskit.visualization import plot_bloch_vector
 from qiskit.quantum_info import partial_trace, DensityMatrix

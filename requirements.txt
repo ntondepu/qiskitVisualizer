@@ -1,6 +1,5 @@
-
 streamlit>=1.25.0
-numpy>=1.25.0
+numpy==1.23.5  # Downgrade to version compatible with qiskit-ibmq-provider
 matplotlib>=3.7.0
 qiskit==0.43.2
 qiskit-aer==0.12.1

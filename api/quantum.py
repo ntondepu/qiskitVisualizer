@@ -1,82 +1,49 @@
 import matplotlib
-matplotlib.use('Agg')  # Set the backend to Agg for headless environments
-import streamlit as st
+matplotlib.use('Agg')
+from fastapi import FastAPI, Request, Response, Form
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from qiskit import QuantumCircuit, transpile
 from qiskit import execute
 from qiskit.providers.aer import Aer
-from qiskit.visualization import plot_bloch_vector
+from qiskit.visualization import plot_bloch_vector, plot_histogram
 from qiskit.quantum_info import partial_trace, DensityMatrix
 from qiskit.providers.aer.noise import NoiseModel, depolarizing_error, pauli_error
 import numpy as np
 import matplotlib.pyplot as plt
+import io
 import warnings
+import json
+import base64
+from typing import Optional
 
-# Configure warnings
+app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 warnings.filterwarnings('ignore', category=RuntimeWarning)
-np.seterr(all='ignore')  # Suppress numpy warnings
+np.seterr(all='ignore')
 
-# Requirements check
-try:
-    import qiskit
-    import matplotlib
-    import numpy
-    import streamlit
-except ImportError as e:
-    st.error(f"Missing required package: {e.name}. Please install all requirements.")
-    st.stop()
-
-# ============ CONFIG =============
-st.set_page_config(page_title="Quantum Learning Platform", layout="wide")
-st.title("Quantum Learning Platform")
-
-# ============ TABS =============
-tabs = st.tabs([
-    "Upload QASM File",
-    "Build Circuit",
-    "Optimize Circuit",
-    "Noise Simulation",
-    "Challenge Mode",
-])
-
-def explain_gate(gate, target, control):
-    if gate == "H":
-        return f"H on q[{target}] → Creates superposition."
-    elif gate == "X":
-        return f"X on q[{target}] → Flips the qubit (|0⟩ ↔ |1⟩)."
-    elif gate == "Y":
-        return f"Y on q[{target}] → Applies a Y-rotation."
-    elif gate == "Z":
-        return f"Z on q[{target}] → Applies a Z phase flip."
-    elif gate == "CX":
-        return f"CX from q[{control}] to q[{target}] → Entangles qubits."
-    elif gate == "SWAP":
-        return f"SWAP between q[{control}] and q[{target}] → Swaps their states."
-    return ""
-
-def has_measurement(circuit):
-    return any(inst.operation.name == 'measure' for inst in circuit.data)
+# Global variable to store circuit state
+current_circuit = None
 
 def get_bloch_vector(rho):
-    """Compute the Bloch vector from a single-qubit density matrix with numerical stability."""
     paulis = [
-        np.array([[0, 1], [1, 0]]),        # X
-        np.array([[0, -1j], [1j, 0]]),     # Y
-        np.array([[1, 0], [0, -1]])        # Z
+        np.array([[0, 1], [1, 0]]),
+        np.array([[0, -1j], [1j, 0]]),
+        np.array([[1, 0], [0, -1]])
     ]
-    
     try:
         with np.errstate(divide='ignore', invalid='ignore'):
             bloch_vec = np.array([np.trace(rho.data @ p).real for p in paulis])
             bloch_vec = np.nan_to_num(bloch_vec, nan=0.0, posinf=0.0, neginf=0.0)
             norm = np.linalg.norm(bloch_vec)
-            if norm > 1e-8:  # Only normalize if vector isn't effectively zero
+            if norm > 1e-8:
                 bloch_vec = bloch_vec / norm
         return bloch_vec
     except Exception:
         return np.zeros(3)
 
 def is_valid_state(state_vector):
-    """Check if a state vector is valid and can be visualized."""
     if state_vector is None:
         return False
     if np.any(np.isnan(state_vector)) or np.any(np.isinf(state_vector)):
@@ -85,222 +52,565 @@ def is_valid_state(state_vector):
         return False
     return True
 
-# ========== TAB 0: Upload QASM ==========
-with tabs[0]:
-    uploaded_file = st.file_uploader("Upload your QASM file (.qasm)", type=["qasm"])
-    if uploaded_file is not None:
-        try:
-            qasm_str = uploaded_file.read().decode("utf-8")
-            qc = QuantumCircuit.from_qasm_str(qasm_str)
+def explain_gate(gate, target, control=None):
+    explanations = {
+        "H": f"H on q[{target}] → Creates superposition.",
+        "X": f"X on q[{target}] → Flips the qubit (|0⟩ ↔ |1⟩).",
+        "Y": f"Y on q[{target}] → Applies a Y-rotation.",
+        "Z": f"Z on q[{target}] → Applies a Z phase flip.",
+        "CX": f"CX from q[{control}] to q[{target}] → Entangles qubits.",
+        "SWAP": f"SWAP between q[{control}] and q[{target}] → Swaps their states."
+    }
+    return explanations.get(gate, "")
+
+def has_measurement(circuit):
+    return any(inst.operation.name == 'measure' for inst in circuit.data)
+
+@app.get("/", response_class=HTMLResponse)
+async def home():
+    return """
+    <html>
+        <head>
+            <title>Quantum Learning Platform</title>
+            <style>
+                body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+                .tab { display: none; }
+                .active { display: block; }
+                .tab-buttons { display: flex; margin-bottom: 20px; }
+                .tab-button { padding: 10px 20px; cursor: pointer; background: #eee; border: none; }
+                .tab-button.active { background: #ddd; }
+                .visualization { margin: 20px 0; }
+                .sidebar { width: 250px; float: left; }
+                .main-content { margin-left: 270px; }
+                .gate-control { margin-bottom: 10px; }
+                .columns { display: flex; }
+                .column { flex: 1; margin: 5px; }
+            </style>
+        </head>
+        <body>
+            <h1>Quantum Learning Platform</h1>
             
-            # Display circuit diagram
-            fig, ax = plt.subplots()
-            qc.draw(output='mpl', ax=ax)
-            st.subheader("Circuit Diagram")
-            st.pyplot(fig)
-            plt.close(fig)
+            <div class="tab-buttons">
+                <button class="tab-button" onclick="openTab('upload')">Upload QASM</button>
+                <button class="tab-button" onclick="openTab('build')">Build Circuit</button>
+                <button class="tab-button" onclick="openTab('optimize')">Optimize</button>
+                <button class="tab-button" onclick="openTab('noise')">Noise Simulation</button>
+                <button class="tab-button" onclick="openTab('challenge')">Challenge Mode</button>
+            </div>
             
-            st.write(f"Number of qubits: {qc.num_qubits}")
-            st.write(f"Number of gates: {qc.size()}")
-
-            if has_measurement(qc):
-                backend = Aer.get_backend('qasm_simulator')
-                result = execute(qc, backend, shots=1024).result()
-                counts = result.get_counts()
-                st.subheader("Measurement Results")
-                st.bar_chart(counts)
-                st.info("Bloch sphere visualization skipped (circuit contains measurements)")
-            else:
-                try:
-                    sim_backend = Aer.get_backend('statevector_simulator')
-                    with np.errstate(divide='ignore', invalid='ignore'):
-                        sim_result = execute(qc, sim_backend).result()
-                        state_vector = sim_result.get_statevector()
-                        
-                        if not is_valid_state(state_vector):
-                            st.error("Invalid state vector obtained - circuit may be numerically unstable")
-                        else:
-                            num_qubits = qc.num_qubits
-                            st.subheader("Bloch Sphere (Final State of Each Qubit)")
-                            cols = st.columns(min(num_qubits, 5))
-                            for i in range(num_qubits):
-                                try:
-                                    reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
-                                    if not is_valid_state(reduced_dm.data):
-                                        st.warning(f"Qubit {i} has invalid state - cannot visualize")
-                                        continue
-                                        
-                                    dm = DensityMatrix(reduced_dm)
-                                    bloch_vec = get_bloch_vector(dm)
-
-                                    fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
-                                    fig.set_size_inches(3, 3)
-                                    with cols[i % 5]:
-                                        st.pyplot(fig)
-                                    plt.close(fig)
-                                except Exception as e:
-                                    st.error(f"Visualization failed for qubit {i}: {str(e)}")
-                except Exception as e:
-                    st.error(f"Simulation failed: {str(e)}")
-
-        except Exception as e:
-            st.error(f"Error loading QASM file: {e}")
-
-# ========== TAB 1: Build Circuit ==========
-with tabs[1]:
-    st.sidebar.header("Circuit Builder")
-    num_qubits = st.sidebar.number_input("Number of Qubits", min_value=1, max_value=5, value=2)
-    st.sidebar.subheader("Add Up to 15 Gates by Position")
-    gate_instructions = []
-    explanations = []
-
-    for i in range(15):
-        col = st.sidebar.columns(3)
-        gate_type = col[0].selectbox(f"Gate {i+1}", ["", "H", "X", "Y", "Z", "CX", "SWAP"], key=f"gate_{i}")
-        target = col[1].number_input(f"q[{i}] target", min_value=0, max_value=num_qubits-1, step=1, key=f"target_{i}")
-        control = None
-        if gate_type in ["CX", "SWAP"]:
-            control = col[2].number_input(f"q[{i}] control", min_value=0, max_value=num_qubits-1, step=1, key=f"control_{i}")
-        if gate_type:
-            gate_instructions.append((gate_type, target, control))
-            explanations.append(explain_gate(gate_type, target, control))
-
-    measure = st.sidebar.checkbox("Add Measurement")
-    qc = QuantumCircuit(num_qubits, num_qubits if measure else 0)
-
-    for gate, target, control in gate_instructions:
-        if gate == "H":
-            qc.h(target)
-        elif gate == "X":
-            qc.x(target)
-        elif gate == "Y":
-            qc.y(target)
-        elif gate == "Z":
-            qc.z(target)
-        elif gate == "CX" and control is not None:
-            qc.cx(control, target)
-        elif gate == "SWAP" and control is not None:
-            qc.swap(control, target)
-
-    if measure:
-        for i in range(num_qubits):
-            qc.measure(i, i)
-
-    # Display circuit diagram
-    fig, ax = plt.subplots()
-    qc.draw(output='mpl', ax=ax)
-    st.subheader("Generated Circuit")
-    st.pyplot(fig)
-    plt.close(fig)
-
-    st.subheader("Step-by-Step Explanation")
-    for step in explanations:
-        st.write("- " + step)
-
-    if not measure:
-        try:
-            sim_backend = Aer.get_backend('statevector_simulator')
-            with np.errstate(divide='ignore', invalid='ignore'):
-                sim_result = execute(qc, sim_backend).result()
-                state_vector = sim_result.get_statevector()
+            <div id="upload" class="tab">
+                <h2>Upload QASM File</h2>
+                <input type="file" id="qasmFile">
+                <button onclick="uploadQASM()">Upload</button>
+                <div id="uploadResults"></div>
+            </div>
+            
+            <div id="build" class="tab">
+                <div class="sidebar">
+                    <h3>Circuit Builder</h3>
+                    <div>
+                        <label>Number of Qubits:</label>
+                        <input type="number" id="numQubits" min="1" max="5" value="2">
+                    </div>
+                    <h4>Add Gates</h4>
+                    <div id="gateControls"></div>
+                    <div>
+                        <input type="checkbox" id="addMeasurement">
+                        <label for="addMeasurement">Add Measurement</label>
+                    </div>
+                    <button onclick="generateCircuit()">Generate Circuit</button>
+                </div>
+                <div class="main-content">
+                    <h2>Generated Circuit</h2>
+                    <div id="circuitDiagram"></div>
+                    <h3>Step-by-Step Explanation</h3>
+                    <div id="explanations"></div>
+                    <div id="blochSpheres"></div>
+                </div>
+            </div>
+            
+            <div id="optimize" class="tab">
+                <h2>Optimized Circuit</h2>
+                <div id="optimizedCircuit"></div>
+            </div>
+            
+            <div id="noise" class="tab">
+                <h2>Simulate Quantum Noise</h2>
+                <div>
+                    <input type="checkbox" id="bitFlipNoise">
+                    <label for="bitFlipNoise">Add Bit-flip Noise</label>
+                </div>
+                <div>
+                    <input type="checkbox" id="depolarizingNoise">
+                    <label for="depolarizingNoise">Add Depolarizing Noise</label>
+                </div>
+                <div>
+                    <input type="checkbox" id="measurementError">
+                    <label for="measurementError">Add Measurement Error</label>
+                </div>
+                <button onclick="simulateNoise()">Simulate Noise</button>
+                <div id="noiseResults"></div>
+            </div>
+            
+            <div id="challenge" class="tab">
+                <h2>Quantum Challenge Mode</h2>
+                <select id="challengeSelect">
+                    <option value="bell">Create a Bell State</option>
+                    <option value="flip">Flip qubit with one gate</option>
+                </select>
+                <button onclick="runChallenge()">Run My Circuit</button>
+                <div id="challengeResults"></div>
+            </div>
+            
+            <script>
+                // Tab management
+                function openTab(tabName) {
+                    const tabs = document.getElementsByClassName('tab');
+                    for (let tab of tabs) {
+                        tab.classList.remove('active');
+                    }
+                    document.getElementById(tabName).classList.add('active');
+                    
+                    const buttons = document.getElementsByClassName('tab-button');
+                    for (let btn of buttons) {
+                        btn.classList.remove('active');
+                    }
+                    event.currentTarget.classList.add('active');
+                }
                 
-                if not is_valid_state(state_vector):
-                    st.error("Invalid state vector obtained - circuit may be numerically unstable")
-                else:
-                    st.subheader("Bloch Sphere (Final State of Each Qubit)")
-                    cols = st.columns(min(num_qubits, 5))
-                    for i in range(num_qubits):
-                        try:
-                            reduced_dm = partial_trace(state_vector, [j for j in range(num_qubits) if j != i])
-                            if not is_valid_state(reduced_dm.data):
-                                st.warning(f"Qubit {i} has invalid state - cannot visualize")
-                                continue
-                                
-                            dm = DensityMatrix(reduced_dm)
-                            bloch_vec = get_bloch_vector(dm)
+                // Initialize gate controls
+                function initGateControls() {
+                    const gateControls = document.getElementById('gateControls');
+                    gateControls.innerHTML = '';
+                    
+                    for (let i = 0; i < 15; i++) {
+                        const div = document.createElement('div');
+                        div.className = 'gate-control';
+                        div.innerHTML = `
+                            <select id="gate${i}">
+                                <option value="">Select Gate</option>
+                                <option value="H">H</option>
+                                <option value="X">X</option>
+                                <option value="Y">Y</option>
+                                <option value="Z">Z</option>
+                                <option value="CX">CX</option>
+                                <option value="SWAP">SWAP</option>
+                            </select>
+                            <input type="number" id="target${i}" min="0" max="4" placeholder="Target" style="width: 60px;">
+                            <input type="number" id="control${i}" min="0" max="4" placeholder="Control" style="width: 60px;">
+                        `;
+                        gateControls.appendChild(div);
+                    }
+                }
+                
+                // Upload QASM
+                async function uploadQASM() {
+                    const fileInput = document.getElementById('qasmFile');
+                    const file = fileInput.files[0];
+                    const reader = new FileReader();
+                    
+                    reader.onload = async function(e) {
+                        const qasm = e.target.result;
+                        const response = await fetch('/api/upload-qasm', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ qasm: qasm })
+                        });
+                        
+                        const result = await response.json();
+                        if (result.status === 'success') {
+                            document.getElementById('uploadResults').innerHTML = `
+                                <div class="visualization">
+                                    <h3>Circuit Diagram</h3>
+                                    <img src="/api/circuit-image?qasm=${encodeURIComponent(qasm)}" width="500">
+                                </div>
+                                <div>
+                                    <p>Qubits: ${result.num_qubits}</p>
+                                    <p>Gates: ${result.num_gates}</p>
+                                </div>
+                            `;
+                        } else {
+                            document.getElementById('uploadResults').innerHTML = `
+                                <p style="color: red;">Error: ${result.message}</p>
+                            `;
+                        }
+                    };
+                    
+                    reader.readAsText(file);
+                }
+                
+                // Generate circuit
+                async function generateCircuit() {
+                    const numQubits = parseInt(document.getElementById('numQubits').value);
+                    const measure = document.getElementById('addMeasurement').checked;
+                    
+                    const gates = [];
+                    const explanations = [];
+                    
+                    for (let i = 0; i < 15; i++) {
+                        const gateType = document.getElementById(`gate${i}`).value;
+                        if (gateType) {
+                            const target = parseInt(document.getElementById(`target${i}`).value);
+                            let control = null;
+                            if (gateType === 'CX' || gateType === 'SWAP') {
+                                control = parseInt(document.getElementById(`control${i}`).value);
+                            }
+                            gates.push({ gate: gateType, target, control });
+                            explanations.push(explainGate(gateType, target, control));
+                        }
+                    }
+                    
+                    const response = await fetch('/api/generate-circuit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            num_qubits: numQubits,
+                            gates: gates,
+                            measure: measure
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        // Display circuit diagram
+                        document.getElementById('circuitDiagram').innerHTML = `
+                            <img src="/api/circuit-image?qasm=${encodeURIComponent(result.qasm)}" width="500">
+                        `;
+                        
+                        // Display explanations
+                        const explanationsDiv = document.getElementById('explanations');
+                        explanationsDiv.innerHTML = '<h4>Step-by-Step Explanation</h4>';
+                        explanations.filter(e => e).forEach(exp => {
+                            explanationsDiv.innerHTML += `<p>- ${exp}</p>`;
+                        });
+                        
+                        // Display Bloch spheres if no measurements
+                        if (!result.has_measurement) {
+                            const blochDiv = document.getElementById('blochSpheres');
+                            blochDiv.innerHTML = '<h4>Bloch Spheres</h4><div class="columns">';
+                            for (let i = 0; i < numQubits; i++) {
+                                blochDiv.innerHTML += `
+                                    <div class="column">
+                                        <img src="/api/bloch-sphere?qasm=${encodeURIComponent(result.qasm)}&qubit_index=${i}" width="200">
+                                    </div>
+                                `;
+                            }
+                            blochDiv.innerHTML += '</div>';
+                        } else {
+                            document.getElementById('blochSpheres').innerHTML = `
+                                <p>Bloch sphere visualization skipped (circuit contains measurements)</p>
+                            `;
+                        }
+                    }
+                }
+                
+                // Optimize circuit
+                async function optimizeCircuit() {
+                    const response = await fetch('/api/optimize-circuit');
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        document.getElementById('optimizedCircuit').innerHTML = `
+                            <p>Before Optimization: ${result.before_gates} gates</p>
+                            <p>After Optimization: ${result.after_gates} gates</p>
+                            <img src="/api/circuit-image?qasm=${encodeURIComponent(result.optimized_qasm)}" width="500">
+                        `;
+                    }
+                }
+                
+                // Simulate noise
+                async function simulateNoise() {
+                    const bitFlip = document.getElementById('bitFlipNoise').checked;
+                    const depolarizing = document.getElementById('depolarizingNoise').checked;
+                    const measurement = document.getElementById('measurementError').checked;
+                    
+                    const response = await fetch('/api/simulate-noise', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            bit_flip: bitFlip,
+                            depolarizing: depolarizing,
+                            measurement: measurement
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        // Convert counts to chart data
+                        const labels = Object.keys(result.counts);
+                        const data = Object.values(result.counts);
+                        
+                        document.getElementById('noiseResults').innerHTML = `
+                            <h3>Results with Noise</h3>
+                            <canvas id="noiseChart" width="500" height="300"></canvas>
+                            <script>
+                                new Chart(document.getElementById('noiseChart'), {
+                                    type: 'bar',
+                                    data: {
+                                        labels: ${JSON.stringify(labels)},
+                                        datasets: [{
+                                            label: 'Counts',
+                                            data: ${JSON.stringify(data)},
+                                            backgroundColor: 'rgba(54, 162, 235, 0.5)'
+                                        }]
+                                    },
+                                    options: {
+                                        responsive: false,
+                                        scales: {
+                                            y: { beginAtZero: true }
+                                        }
+                                    }
+                                });
+                            </script>
+                        `;
+                    }
+                }
+                
+                // Run challenge
+                async function runChallenge() {
+                    const challenge = document.getElementById('challengeSelect').value;
+                    
+                    const response = await fetch('/api/run-challenge', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ challenge: challenge })
+                    });
+                    
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        // Convert counts to chart data
+                        const labels = Object.keys(result.counts);
+                        const data = Object.values(result.counts);
+                        
+                        let message = '';
+                        if (result.passed) {
+                            message = '<p style="color: green;">Challenge passed!</p>';
+                        } else {
+                            message = '<p style="color: orange;">Try again!</p>';
+                        }
+                        
+                        document.getElementById('challengeResults').innerHTML = `
+                            ${message}
+                            <canvas id="challengeChart" width="500" height="300"></canvas>
+                            <script>
+                                new Chart(document.getElementById('challengeChart'), {
+                                    type: 'bar',
+                                    data: {
+                                        labels: ${JSON.stringify(labels)},
+                                        datasets: [{
+                                            label: 'Counts',
+                                            data: ${JSON.stringify(data)},
+                                            backgroundColor: 'rgba(75, 192, 192, 0.5)'
+                                        }]
+                                    },
+                                    options: {
+                                        responsive: false,
+                                        scales: {
+                                            y: { beginAtZero: true }
+                                        }
+                                    }
+                                });
+                            </script>
+                        `;
+                    }
+                }
+                
+                // Initialize the page
+                initGateControls();
+                document.querySelector('.tab-button').click();
+            </script>
+        </body>
+    </html>
+    """
 
-                            fig = plot_bloch_vector(bloch_vec, title=f"Qubit {i}")
-                            fig.set_size_inches(3, 3)
-                            with cols[i % 5]:
-                                st.pyplot(fig)
-                            plt.close(fig)
-                        except Exception as e:
-                            st.error(f"Visualization failed for qubit {i}: {str(e)}")
-        except Exception as e:
-            st.error(f"Simulation failed: {str(e)}")
-    else:
-        st.info("Bloch sphere visualization skipped (circuit contains measurements)")
+@app.post("/api/upload-qasm")
+async def upload_qasm(request: Request):
+    data = await request.json()
+    qasm_str = data['qasm']
+    
+    try:
+        qc = QuantumCircuit.from_qasm_str(qasm_str)
+        global current_circuit
+        current_circuit = qc
+        return {
+            "status": "success",
+            "num_qubits": qc.num_qubits,
+            "num_gates": qc.size(),
+            "qasm": qasm_str
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
-# ========== TAB 2: Optimize ==========
-with tabs[2]:
-    st.header("Optimized Circuit")
-    if 'qc' in locals():
-        optimized = transpile(qc, optimization_level=3)
-        st.write("Before Optimization: ", len(qc.data), " gates")
-        st.write("After Optimization: ", len(optimized.data), " gates")
-        
+@app.get("/api/circuit-image")
+async def get_circuit_image(qasm: str):
+    try:
+        qc = QuantumCircuit.from_qasm_str(qasm)
         fig, ax = plt.subplots()
-        optimized.draw(output='mpl', ax=ax)
-        st.pyplot(fig)
+        qc.draw(output='mpl', ax=ax)
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        buf.seek(0)
         plt.close(fig)
-    else:
-        st.info("Build or upload a circuit first to optimize.")
+        
+        return Response(content=buf.read(), media_type="image/png")
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
-# ========== TAB 3: Noise Simulation ==========
-with tabs[3]:
-    st.header("Simulate Quantum Noise")
-    noise_model = NoiseModel()
-    if st.checkbox("Add Bit-flip Noise"):
-        noise_model.add_all_qubit_quantum_error(pauli_error([("X", 0.01), ("I", 0.99)]), ["x"])
-    if st.checkbox("Add Depolarizing Noise"):
-        noise_model.add_all_qubit_quantum_error(depolarizing_error(0.02, 1), ["h", "x", "y", "z"])
-    if st.checkbox("Add Measurement Error"):
-        error = pauli_error([("X", 0.1), ("I", 0.9)])
-        noise_model.add_all_qubit_readout_error(error)
+@app.get("/api/bloch-sphere")
+async def get_bloch_sphere(qasm: str, qubit_index: int = 0):
+    try:
+        qc = QuantumCircuit.from_qasm_str(qasm)
+        sim_backend = Aer.get_backend('statevector_simulator')
+        sim_result = execute(qc, sim_backend).result()
+        state_vector = sim_result.get_statevector()
+        
+        reduced_dm = partial_trace(state_vector, [j for j in range(qc.num_qubits) if j != qubit_index])
+        dm = DensityMatrix(reduced_dm)
+        bloch_vec = get_bloch_vector(dm)
 
-    backend = Aer.get_backend('qasm_simulator')
+        fig = plot_bloch_vector(bloch_vec, title=f"Qubit {qubit_index}")
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        buf.seek(0)
+        plt.close(fig)
+        
+        return Response(content=buf.read(), media_type="image/png")
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
-    if 'qc' in locals():
-        temp_qc = qc.copy()
+@app.post("/api/generate-circuit")
+async def generate_circuit(request: Request):
+    data = await request.json()
+    num_qubits = data['num_qubits']
+    gates = data['gates']
+    measure = data['measure']
+    
+    try:
+        qc = QuantumCircuit(num_qubits, num_qubits if measure else 0)
+        
+        for gate in gates:
+            if gate['gate'] == "H":
+                qc.h(gate['target'])
+            elif gate['gate'] == "X":
+                qc.x(gate['target'])
+            elif gate['gate'] == "Y":
+                qc.y(gate['target'])
+            elif gate['gate'] == "Z":
+                qc.z(gate['target'])
+            elif gate['gate'] == "CX":
+                qc.cx(gate['control'], gate['target'])
+            elif gate['gate'] == "SWAP":
+                qc.swap(gate['control'], gate['target'])
+
+        if measure:
+            for i in range(num_qubits):
+                qc.measure(i, i)
+        
+        global current_circuit
+        current_circuit = qc
+        
+        return {
+            "status": "success",
+            "qasm": qc.qasm(),
+            "has_measurement": measure
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/optimize-circuit")
+async def optimize_circuit():
+    global current_circuit
+    if current_circuit is None:
+        return {"status": "error", "message": "No circuit available to optimize"}
+    
+    try:
+        optimized = transpile(current_circuit, optimization_level=3)
+        return {
+            "status": "success",
+            "before_gates": len(current_circuit.data),
+            "after_gates": len(optimized.data),
+            "optimized_qasm": optimized.qasm()
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/simulate-noise")
+async def simulate_noise(request: Request):
+    data = await request.json()
+    bit_flip = data['bit_flip']
+    depolarizing = data['depolarizing']
+    measurement = data['measurement']
+    
+    global current_circuit
+    if current_circuit is None:
+        return {"status": "error", "message": "No circuit available"}
+    
+    try:
+        noise_model = NoiseModel()
+        if bit_flip:
+            noise_model.add_all_qubit_quantum_error(pauli_error([("X", 0.01), ("I", 0.99)]), ["x"])
+        if depolarizing:
+            noise_model.add_all_qubit_quantum_error(depolarizing_error(0.02, 1), ["h", "x", "y", "z"])
+        if measurement:
+            error = pauli_error([("X", 0.1), ("I", 0.9)])
+            noise_model.add_all_qubit_readout_error(error)
+
+        backend = Aer.get_backend('qasm_simulator')
+        temp_qc = current_circuit.copy()
         if not has_measurement(temp_qc):
             temp_qc.measure_all()
 
-        try:
-            job = execute(temp_qc, backend, noise_model=noise_model, shots=1024)
-            result = job.result()
-            st.subheader("Results with Noise")
-            st.bar_chart(result.get_counts())
-        except Exception as e:
-            st.error(f"Noise simulation failed: {str(e)}")
-    else:
-        st.info("Build or upload a circuit first to simulate noise.")
+        job = execute(temp_qc, backend, noise_model=noise_model, shots=1024)
+        result = job.result()
+        counts = result.get_counts()
+        
+        return {
+            "status": "success",
+            "counts": counts
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
-# ========== TAB 4: Challenge Mode ==========
-with tabs[4]:
-    st.header("Quantum Challenge Mode")
-    challenge = st.selectbox("Choose a challenge", ["Create a Bell State", "Flip qubit with one gate"])
-    if challenge == "Create a Bell State":
-        st.markdown("Hint: Use H and CX gates")
-        expected = {'00': 512, '11': 512}
-    elif challenge == "Flip qubit with one gate":
-        st.markdown("Hint: Try the X gate")
-        expected = {'1': 1024}
-
-    run = st.button("Run My Circuit")
-    if run and 'qc' in locals():
-        if has_measurement(qc):
-            try:
-                backend = Aer.get_backend('qasm_simulator')
-                result = execute(qc, backend, shots=1024).result()
-                counts = result.get_counts()
-                st.bar_chart(counts)
-                if counts == expected:
-                    st.success("Challenge passed!")
-                else:
-                    st.warning("Try again!")
-            except Exception as e:
-                st.error(f"Challenge execution failed: {str(e)}")
+@app.post("/api/run-challenge")
+async def run_challenge(request: Request):
+    data = await request.json()
+    challenge = data['challenge']
+    
+    global current_circuit
+    if current_circuit is None:
+        return {"status": "error", "message": "No circuit available"}
+    
+    try:
+        if challenge == "bell":
+            expected = {'00': 512, '11': 512}
+        elif challenge == "flip":
+            expected = {'1': 1024}
         else:
-            st.warning("Add measurement to verify results!")
-    elif run:
-        st.warning("Build or upload a circuit first!")
+            return {"status": "error", "message": "Invalid challenge"}
+        
+        if not has_measurement(current_circuit):
+            return {
+                "status": "success",
+                "counts": {},
+                "passed": False,
+                "message": "Add measurement to verify results!"
+            }
+        
+        backend = Aer.get_backend('qasm_simulator')
+        result = execute(current_circuit, backend, shots=1024).result()
+        counts = result.get_counts()
+        
+        passed = counts == expected
+        
+        return {
+            "status": "success",
+            "counts": counts,
+            "passed": passed
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

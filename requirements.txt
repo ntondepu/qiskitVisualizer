@@ -1,8 +1,8 @@
 streamlit>=1.25.0
 numpy>=1.23.5
 matplotlib>=3.7.0
-qiskit==1.0.2
-qiskit-aer==0.13.2
+qiskit>=1.0.0
+qiskit-aer>=0.13.0
 qiskit-terra>=1.0.0
 pylatexenc>=2.10
 pillow>=10.0.0

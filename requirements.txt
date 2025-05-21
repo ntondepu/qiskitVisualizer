@@ -5,5 +5,3 @@ qiskit==0.43.2
 qiskit-aer==0.12.1
 pylatexenc==2.10
 pillow==9.5.0
-scipy==1.10.0
-dill==0.3.6

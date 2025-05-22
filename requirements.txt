@@ -1,8 +1,5 @@
-fastapi==0.95.2
-uvicorn==0.22.0
-qiskit==0.46.0
-qiskit-aer==0.13.0
-numpy==1.23.5
-matplotlib==3.7.0
-pylatexenc==2.10
-pillow==9.5.0
+fastapi>=0.68.0
+qiskit>=0.34.0
+matplotlib>=3.4.0
+uvicorn>=0.15.0
+python-multipart

@@ -3,28 +3,24 @@ import { useState } from 'react';
 export default function NoiseSimulator() {
   const [noiseConfig, setNoiseConfig] = useState({
     depolarizing: 0.01,
-    bitflip: 0.01,
-    measurement: 0.01
+    bit_flip: 0.01
   });
   const [results, setResults] = useState(null);
 
-  const handleNoiseChange = (e) => {
-    setNoiseConfig({
-      ...noiseConfig,
-      [e.target.name]: parseFloat(e.target.value)
-    });
-  };
-
-  const runSimulation = async () => {
+  const runNoisySimulation = async () => {
     try {
-      const response = await fetch('/api/simulate-noise', {
+      const response = await fetch('/api/run-simulation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(noiseConfig)
+        body: JSON.stringify({
+          shots: 1024,
+          noise: noiseConfig
+        })
       });
-      setResults(await response.json());
+      const data = await response.json();
+      setResults(data.results);
     } catch (error) {
-      console.error('Noise simulation failed:', error);
+      console.error('Error running noisy simulation:', error);
     }
   };
 
@@ -34,27 +30,29 @@ export default function NoiseSimulator() {
       
       <div className="noise-controls">
         <label>
-          Depolarizing Noise:
+          Depolarizing Error:
           <input
             type="range"
-            name="depolarizing"
             min="0"
             max="0.1"
             step="0.001"
             value={noiseConfig.depolarizing}
-            onChange={handleNoiseChange}
+            onChange={(e) => setNoiseConfig({
+              ...noiseConfig,
+              depolarizing: parseFloat(e.target.value)
+            })}
           />
-          {noiseConfig.depolarizing}
+          {noiseConfig.depolarizing.toFixed(3)}
         </label>
-        {/* Add similar controls for other noise types */}
-      </div>
 
-      <button onClick={runSimulation}>Simulate Noise</button>
+        <button onClick={runNoisySimulation}>
+          Run Noisy Simulation
+        </button>
+      </div>
 
       {results && (
         <div className="results">
-          <h3>Results with Noise</h3>
-          <pre>{JSON.stringify(results, null, 2)}</pre>
+          <img src={`data:image/png;base64,${results.histogram}`} alt="Noisy results" />
         </div>
       )}
     </div>

@@ -1,5 +1,0 @@
-fastapi>=0.68.0
-qiskit>=0.34.0
-matplotlib>=3.4.0
-uvicorn>=0.15.0
-python-multipart

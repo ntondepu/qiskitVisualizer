@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   publicDir: 'public',
   build: {
-    outDir: '../server/static',  # Changed to match Flask's expected static files
+    outDir: '../server/static',
     emptyOutDir: true,
   }
 })

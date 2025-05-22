@@ -13,7 +13,7 @@ import os
 import socket
 
 # Initialize Flask app
-app = Flask(__name__, static_folder='../client/dist')
+app = Flask(__name__, static_folder='static')
 
 # Configure CORS
 CORS(app, resources={

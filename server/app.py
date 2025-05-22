@@ -14,7 +14,13 @@ import base64
 import os
 
 app = Flask(__name__, static_folder='../client/dist')
-CORS(app)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 def get_bloch_vector(rho):
     """Calculate Bloch vector from density matrix with numerical stability checks"""

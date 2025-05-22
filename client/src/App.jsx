@@ -36,5 +36,5 @@ export default function App() {
         {tabs[activeTab].component}
       </div>
     </div>
-  )
+  );
 }

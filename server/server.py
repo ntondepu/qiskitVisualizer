@@ -4,14 +4,22 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
+# Add this root route for testing
+@app.route('/')
+def home():
+    return jsonify({"message": "Quantum Backend Running", "status": "OK"})
+
 @app.route('/init-circuit', methods=['POST'])
 def init_circuit():
-    data = request.get_json()
-    num_qubits = data.get('num_qubits', 2)
+    num_qubits = request.json.get('num_qubits', 2)
     return jsonify({
         'success': True,
-        'message': f'Initialized {num_qubits} qubits'
+        'message': f'Initialized {num_qubits} qubits',
+        'data': {
+            'qubits': num_qubits,
+            'state': '|0>' * num_qubits
+        }
     })
 
 if __name__ == '__main__':
-    app.run(port=5000)
+    app.run(port=5000, debug=True)  # Added debug mode

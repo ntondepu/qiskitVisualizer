@@ -24,9 +24,12 @@ export default function QASMUploader() {
         throw new Error('Invalid QASM file format');
       }
 
-      const response = await fetch('/api/upload-qasm', {
+      const response = await fetch('/api/upload-qasm', {  // Note: Using relative path now
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',  // Important for CORS with credentials
         body: JSON.stringify({ qasm: qasmText })
       });
 

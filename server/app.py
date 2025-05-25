@@ -23,10 +23,20 @@ app = Flask(__name__, static_folder='../client/dist')
 CORS(app, resources={
     r"/api/*": {
         "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "expose_headers": ["Content-Disposition"],
+        "supports_credentials": True,
+        "max_age": 3600
     }
 })
+
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 # Global variables for circuit state
 current_circuit = None

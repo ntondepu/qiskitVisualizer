@@ -197,61 +197,124 @@ h3 {
 
 /* ===== Circuit Builder ===== */
 .circuit-builder {
-  background: white;
-  padding: 2rem;
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.error-message {
+  color: #e74c3c;
+  background: #fadbd8;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.control-group {
+  background: #f8f9fa;
+  padding: 15px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
-.gate-controls {
-  background: var(--light);
-  padding: 1.5rem;
-  border-radius: 8px;
-  margin-bottom: 1.5rem;
+.control-group label {
+  display: block;
+  margin: 10px 0 5px;
+  font-weight: 500;
 }
 
-.gate-selection {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.gate-selection select {
-  padding: 0.5rem;
+.control-group select,
+.control-group input {
+  width: 100%;
+  padding: 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
-  font-size: 1rem;
-}
-
-.qubit-line {
-  display: flex;
-  align-items: center;
   margin-bottom: 10px;
-  padding: 10px;
-  background: var(--light);
-  border-radius: 4px;
 }
 
-.gate-slot {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 5px;
-  border-radius: 4px;
-  font-weight: bold;
+.action-button {
+  background: #3498db;
   color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  margin-top: 10px;
+  width: 100%;
 }
 
-.gate-slot.h { background: #e74c3c; }
-.gate-slot.x { background: #3498db; }
-.gate-slot.y { background: #2ecc71; }
-.gate-slot.z { background: #9b59b6; }
-.gate-slot.cx { background: #f39c12; }
-.gate-slot.swap { background: #1abc9c; }
+.action-button:disabled {
+  background: #95a5a6;
+  cursor: not-allowed;
+}
 
+.visualization-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.circuit-preview {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.circuit-image {
+  width: 100%;
+  border: 1px solid #eee;
+  margin-top: 10px;
+}
+
+.state-visualization,
+.results-viewer {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.histogram {
+  display: flex;
+  height: 200px;
+  align-items: flex-end;
+  gap: 5px;
+  margin-top: 15px;
+}
+
+.histogram-bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.bar {
+  width: 100%;
+  background: #3498db;
+  transition: height 0.3s ease;
+}
+
+.state-label,
+.count-label {
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+@media (max-width: 768px) {
+  .visualization-container {
+    grid-template-columns: 1fr;
+  }
+}
 /* ===== Visualization Components ===== */
 .visualization-container {
   display: grid;

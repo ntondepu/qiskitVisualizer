@@ -19,6 +19,7 @@ export default function QASMUploader() {
     try {
       const qasmText = await file.text();
       
+      // Basic validation
       if (!qasmText.trim().startsWith('OPENQASM')) {
         throw new Error('Invalid QASM file format');
       }
@@ -44,7 +45,7 @@ export default function QASMUploader() {
       setResults(data);
     } catch (error) {
       console.error('QASM upload error:', error);
-      setError(error.message);
+      setError(error.message || 'Failed to connect to server. Is the backend running?');
     } finally {
       setIsLoading(false);
     }
@@ -66,41 +67,65 @@ export default function QASMUploader() {
         </label>
       </div>
 
-      {isLoading && <div className="loading">Loading...</div>}
-      {error && <div className="error">{error}</div>}
+      {isLoading && (
+        <div className="loading-indicator">
+          <div className="spinner"></div>
+          <p>Processing quantum circuit...</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="error-message">
+          <h3>Error</h3>
+          <p>{error}</p>
+          {error.includes('connect') && (
+            <p>Please ensure the backend server is running on port 5001.</p>
+          )}
+        </div>
+      )}
 
       {results && (
-        <div className="results">
+        <div className="results-container">
           <div className="circuit-preview">
             <h3>Circuit Diagram</h3>
             <img 
               src={`data:image/png;base64,${results.circuit_image}`} 
-              alt="Quantum circuit"
+              alt="Quantum circuit diagram"
+              className="circuit-image"
             />
-            <div className="stats">
-              <p>Qubits: {results.num_qubits}</p>
-              <p>Gates: {results.num_gates}</p>
+            <div className="circuit-stats">
+              <p><strong>Qubits:</strong> {results.num_qubits}</p>
+              <p><strong>Gates:</strong> {results.num_gates}</p>
             </div>
           </div>
-          <div className="visualization">
+
+          <div className="simulation-results">
             {results.has_measurement ? (
-              <div className="histogram">
-                <h3>Measurements</h3>
-                {results.counts && (
-                  <div className="bars">
-                    {Object.entries(results.counts).map(([state, count]) => (
-                      <div key={state} className="bar-container">
-                        <div className="bar" style={{ height: `${(count/1024)*100}%` }}></div>
-                        <span>{state}: {count}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <div className="measurement-results">
+                <h3>Measurement Results</h3>
+                <div className="counts-histogram">
+                  {results.counts && (
+                    <div className="histogram-bars">
+                      {Object.entries(results.counts).map(([state, count]) => (
+                        <div key={state} className="histogram-bar">
+                          <div 
+                            className="bar" 
+                            style={{ height: `${(count / 1024) * 100}%` }}
+                          ></div>
+                          <span className="state-label">{state}</span>
+                          <span className="count-label">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
-              <div className="bloch-spheres">
+              <div className="state-visualization">
                 <h3>Qubit States</h3>
-                <BlochSpheres spheres={results.bloch_vectors} />
+                {results.bloch_vectors && (
+                  <BlochSpheres spheres={results.bloch_vectors} />
+                )}
               </div>
             )}
           </div>

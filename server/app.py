@@ -86,6 +86,10 @@ def add_gate(gate_type, target, control=None):
     if current_circuit is None:
         raise ValueError("No circuit initialized")
     
+    # Convert target and control to integers if they aren't already
+    target = int(target)
+    control = int(control) if control is not None else None
+    
     gate_info = {
         'type': gate_type,
         'target': target,
@@ -107,6 +111,8 @@ def add_gate(gate_type, target, control=None):
         qc.cx(control, target)
     elif gate_type == 'swap' and control is not None:
         qc.swap(control, target)
+    else:
+        raise ValueError(f"Invalid gate type or parameters: {gate_type}")
     
     current_circuit['gates'].append(gate_info)
     circuit_history.append(current_circuit.copy())
@@ -118,7 +124,6 @@ def add_measurement():
     if current_circuit is None:
         raise ValueError("No circuit initialized")
     
-    num_qubits = current_circuit['num_qubits']
     current_circuit['qc'].measure_all()
     current_circuit['measurements'] = True
     circuit_history.append(current_circuit.copy())
@@ -159,13 +164,13 @@ def run_simulation(qc, shots=1024, noise_config=None):
     if noise_config:
         noise_model = NoiseModel()
         if 'depolarizing' in noise_config:
-            error = depolarizing_error(noise_config['depolarizing'], 1)
+            error = depolarizing_error(float(noise_config['depolarizing']), 1)
             noise_model.add_all_qubit_quantum_error(error, ['h', 'x', 'cx', 'z', 'y'])
         if 'bit_flip' in noise_config:
-            error = pauli_error([('X', noise_config['bit_flip']), ('I', 1 - noise_config['bit_flip'])])
+            error = pauli_error([('X', float(noise_config['bit_flip'])), ('I', 1 - float(noise_config['bit_flip']))])
             noise_model.add_all_qubit_quantum_error(error, ['measure'])
         if 'phase_flip' in noise_config:
-            error = pauli_error([('Z', noise_config['phase_flip']), ('I', 1 - noise_config['phase_flip'])])
+            error = pauli_error([('Z', float(noise_config['phase_flip'])), ('I', 1 - float(noise_config['phase_flip']))])
             noise_model.add_all_qubit_quantum_error(error, ['measure'])
     
     # Execute simulation
@@ -201,8 +206,18 @@ def verify_challenge_solution(qasm_str, expected_counts):
         result = execute(qc, backend, shots=1024).result()
         actual_counts = result.get_counts()
         
-        # Simple verification - could be more sophisticated
-        return actual_counts.keys() == expected_counts.keys()
+        # More sophisticated verification that checks both keys and approximate values
+        if set(actual_counts.keys()) != set(expected_counts.keys()):
+            return False
+            
+        # Check if counts are roughly proportional (within 10%)
+        for key in expected_counts:
+            expected_ratio = expected_counts[key] / 1000
+            actual_ratio = actual_counts.get(key, 0) / 1024
+            if abs(expected_ratio - actual_ratio) > 0.1:
+                return False
+                
+        return True
     except Exception:
         return False
 
@@ -214,12 +229,18 @@ def init_circuit():
     
     try:
         data = request.get_json()
-        num_qubits = int(data.get('num_qubits', 4))
+        num_qubits = int(data.get('num_qubits', 2))
+        
+        if num_qubits < 1 or num_qubits > 10:
+            raise ValueError("Number of qubits must be between 1 and 10")
+        
         circuit = initialize_circuit(num_qubits)
         return jsonify({
             'success': True,
             'circuit': circuit,
-            'message': f'Initialized circuit with {num_qubits} qubits'
+            'message': f'Initialized circuit with {num_qubits} qubits',
+            'circuit_image': generate_circuit_image(circuit['qc']),
+            'bloch_spheres': calculate_bloch_vectors(circuit['qc'])
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
@@ -232,9 +253,33 @@ def api_add_gate():
     
     try:
         data = request.get_json()
-        gate_type = data['type']
-        target = data['target']
+        if not data:
+            raise ValueError("No data provided")
+            
+        gate_type = data.get('type')
+        target = data.get('target')
         control = data.get('control')
+        
+        if gate_type is None or target is None:
+            raise ValueError("Missing required parameters")
+            
+        # Validate gate type
+        valid_gates = ['h', 'x', 'y', 'z', 'cx', 'swap']
+        if gate_type not in valid_gates:
+            raise ValueError(f"Invalid gate type. Must be one of: {', '.join(valid_gates)}")
+            
+        # Validate target qubit
+        target = int(target)
+        if current_circuit is None or target >= current_circuit['num_qubits']:
+            raise ValueError("Invalid target qubit")
+            
+        # Validate control qubit for two-qubit gates
+        if gate_type in ['cx', 'swap']:
+            if control is None:
+                raise ValueError("Control qubit required for this gate")
+            control = int(control)
+            if control >= current_circuit['num_qubits'] or control == target:
+                raise ValueError("Invalid control qubit")
         
         circuit = add_gate(gate_type, target, control)
         qc = circuit['qc']
@@ -268,6 +313,18 @@ def api_run_simulation():
         if current_circuit is None:
             raise ValueError("No circuit initialized")
         
+        # Validate shots
+        if shots < 1 or shots > 10000:
+            raise ValueError("Shots must be between 1 and 10000")
+            
+        # Validate noise config if provided
+        if noise_config:
+            for key in noise_config:
+                if key not in ['depolarizing', 'bit_flip', 'phase_flip']:
+                    raise ValueError(f"Invalid noise parameter: {key}")
+                if not 0 <= float(noise_config[key]) <= 1:
+                    raise ValueError(f"Invalid value for {key}. Must be between 0 and 1")
+        
         # Add measurements if not already present
         if not current_circuit['measurements']:
             add_measurement()
@@ -292,15 +349,19 @@ def optimize_circuit():
     
     try:
         data = request.get_json()
-        level = data.get('level', 1)
+        level = int(data.get('level', 1))
         
         if current_circuit is None:
             raise ValueError("No circuit to optimize")
+            
+        if level < 0 or level > 3:
+            raise ValueError("Optimization level must be between 0 and 3")
         
         qc = current_circuit['qc']
         optimized = transpile(qc, optimization_level=level)
         
         return jsonify({
+            'success': True,
             'original': {
                 'gate_count': len(qc.data),
                 'depth': qc.depth(),
@@ -314,7 +375,7 @@ def optimize_circuit():
             }
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 def get_optimization_steps(original, optimized):
     """Generate human-readable optimization steps"""
@@ -333,10 +394,13 @@ def verify_challenge():
     
     try:
         data = request.get_json()
-        challenge_id = data['challengeId']
-        qasm_str = data['solution']
+        challenge_id = int(data.get('challengeId'))
+        qasm_str = data.get('solution')
         
-        challenge = challenges_db.get(int(challenge_id))
+        if not qasm_str:
+            raise ValueError("No QASM solution provided")
+            
+        challenge = challenges_db.get(challenge_id)
         if not challenge:
             raise ValueError("Challenge not found")
         
@@ -379,7 +443,10 @@ def upload_qasm():
     
     try:
         data = request.get_json()
-        qasm_str = data['qasm']
+        qasm_str = data.get('qasm')
+        
+        if not qasm_str:
+            raise ValueError("No QASM code provided")
         
         # Create circuit from QASM
         qc = QuantumCircuit.from_qasm_str(qasm_str)

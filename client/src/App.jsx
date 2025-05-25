@@ -1,6 +1,9 @@
 import { useState } from 'react'
-import QASMUploader from './components/QASMUploader'
-import CircuitBuilder from './components/CircuitBuilder'
+import QASMUploader from './QASMUploader'
+import CircuitBuilder from './CircuitBuilder'
+import Optimizer from './Optimizer'
+import NoiseSimulator from './NoiseSimulator'
+import Challenges from './Challenges'
 import './styles.css'
 
 export default function App() {
@@ -9,9 +12,9 @@ export default function App() {
   const tabs = [
     { label: 'Upload QASM', component: <QASMUploader /> },
     { label: 'Build Circuit', component: <CircuitBuilder /> },
-    { label: 'Optimize', component: <div>Optimization coming soon</div> },
-    { label: 'Noise Simulation', component: <div>Noise simulation coming soon</div> },
-    { label: 'Challenges', component: <div>Challenges coming soon</div> }
+    { label: 'Optimize', component: <Optimizer /> },
+    { label: 'Noise Simulation', component: <NoiseSimulator /> },
+    { label: 'Challenges', component: <Challenges /> }
   ]
 
   return (
@@ -36,5 +39,5 @@ export default function App() {
         {tabs[activeTab].component}
       </div>
     </div>
-  );
+  )
 }

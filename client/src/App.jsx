@@ -1,13 +1,13 @@
-import { useState } from 'react'
-import QASMUploader from './components/QASMUploader'
-import CircuitBuilder from './components/CircuitBuilder'
-import Optimizer from './components/Optimizer'
-import NoiseSimulator from './components/NoiseSimulator'
-import Challenges from './components/Challenges'
-import './styles.css'
+import { useState } from 'react';
+import QASMUploader from './components/QASMUploader';
+import CircuitBuilder from './components/CircuitBuilder';
+import Optimizer from './components/Optimizer';
+import NoiseSimulator from './components/NoiseSimulator';
+import Challenges from './components/Challenges';
+import './styles.css';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState(0)
+  const [activeTab, setActiveTab] = useState(0);
 
   const tabs = [
     { label: 'Upload QASM', component: <QASMUploader /> },
@@ -15,7 +15,7 @@ export default function App() {
     { label: 'Optimize', component: <Optimizer /> },
     { label: 'Noise Simulation', component: <NoiseSimulator /> },
     { label: 'Challenges', component: <Challenges /> }
-  ]
+  ];
 
   return (
     <div className="app">
@@ -39,5 +39,5 @@ export default function App() {
         {tabs[activeTab].component}
       </div>
     </div>
-  )
+  );
 }

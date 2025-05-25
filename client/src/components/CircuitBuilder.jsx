@@ -86,7 +86,7 @@ export default function CircuitBuilder() {
           <input 
             type="number" 
             value={numQubits}
-            onChange={(e) => setNumQubits(Math.max(1, Math.min(10, parseInt(e.target.value)))}
+            onChange={(e) => setNumQubits(Math.max(1, Math.min(10, parseInt(e.target.value))))}
             min="1"
             max="10"
             disabled={isLoading}

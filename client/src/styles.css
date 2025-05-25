@@ -1,29 +1,92 @@
 /* ===== Base Styles ===== */
 :root {
-  --primary: #3498db;
-  --primary-dark: #2980b9;
+  --primary: #646cff;
+  --primary-dark: #535bf2;
   --secondary: #2ecc71;
   --danger: #e74c3c;
-  --light: #ecf0f1;
-  --dark: #2c3e50;
-  --gray: #95a5a6;
+  --light: #f5f5f5;
+  --dark: #242424;
 }
 
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: Arial, sans-serif;
   margin: 0;
   padding: 0;
-  background-color: #f5f7fa;
-  color: #333;
-  line-height: 1.6;
+  background-color: #f9f9f9;
 }
 
 .app {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 2rem;
 }
 
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.5rem;
+}
+
+.tabs button {
+  padding: 0.5rem 1rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: #666;
+}
+
+.tabs button.active {
+  color: var(--primary);
+  border-bottom: 2px solid var(--primary);
+}
+
+.tab-content {
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* QASM Uploader */
+.qasm-uploader {
+  padding: 1rem;
+}
+
+.file-input-label {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background: var(--primary);
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.file-input-label input {
+  display: none;
+}
+
+.loading {
+  color: #666;
+  margin: 1rem 0;
+}
+
+.error {
+  color: var(--danger);
+  margin: 1rem 0;
+}
+
+.results {
+  margin-top: 2rem;
+}
+
+.circuit-preview img {
+  max-width: 100%;
+  border: 1px solid #ddd;
+}
 /* ===== Typography ===== */
 h1, h2, h3, h4 {
   color: var(--dark);

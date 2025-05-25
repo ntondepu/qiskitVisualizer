@@ -371,6 +371,31 @@ def get_challenges():
             for k, v in challenges_db.items()
         ]
     })
+    
+@app.route('/api/upload-qasm', methods=['POST', 'OPTIONS'])
+def upload_qasm():
+    if request.method == 'OPTIONS':
+        return _build_cors_preflight_response()
+    
+    try:
+        data = request.get_json()
+        qasm_str = data['qasm']
+        
+        # Create circuit from QASM
+        qc = QuantumCircuit.from_qasm_str(qasm_str)
+        
+        # Generate response data
+        return jsonify({
+            'success': True,
+            'circuit_image': generate_circuit_image(qc),
+            'num_qubits': qc.num_qubits,
+            'num_gates': len(qc.data),
+            'has_measurement': any(gate.operation.name == 'measure' for gate in qc.data),
+            'bloch_vectors': calculate_bloch_vectors(qc),
+            'counts': run_simulation(qc)['counts'] if any(gate.operation.name == 'measure' for gate in qc.data) else None
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

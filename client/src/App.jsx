@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import QASMUploader from './QASMUploader'
-import CircuitBuilder from './CircuitBuilder'
-import Optimizer from './Optimizer'
-import NoiseSimulator from './NoiseSimulator'
-import Challenges from './Challenges'
+import QASMUploader from './components/QASMUploader'
+import CircuitBuilder from './components/CircuitBuilder'
+import Optimizer from './components/Optimizer'
+import NoiseSimulator from './components/NoiseSimulator'
+import Challenges from './components/Challenges'
 import './styles.css'
 
 export default function App() {

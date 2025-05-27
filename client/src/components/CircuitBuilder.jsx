@@ -14,6 +14,11 @@ export default function CircuitBuilder() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const handleNumQubitsChange = (e) => {
+    const value = parseInt(e.target.value) || 2;
+    setNumQubits(Math.max(1, Math.min(10, value)));
+  };
+
   const initializeCircuit = async () => {
     setIsLoading(true);
     setError(null);
@@ -24,15 +29,22 @@ export default function CircuitBuilder() {
         body: JSON.stringify({ num_qubits: numQubits })
       });
       
+      if (!response.ok) {
+        throw new Error('Failed to initialize circuit');
+      }
+      
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to initialize');
+      if (!data.success) {
+        throw new Error(data.error || 'Unknown error');
+      }
       
       setGates([]);
       setResults(null);
-      setBlochSpheres(Array(numQubits).fill(null));
+      setBlochSpheres([]);
       setCircuitImage('');
     } catch (err) {
       setError(err.message);
+      console.error('Error initializing circuit:', err);
     } finally {
       setIsLoading(false);
     }
@@ -105,7 +117,7 @@ export default function CircuitBuilder() {
           <input 
             type="number" 
             value={numQubits}
-            onChange={(e) => setNumQubits(Math.max(1, Math.min(10, parseInt(e.target.value) || 2))}
+            onChange={handleNumQubitsChange}
             min="1"
             max="10"
             disabled={isLoading}

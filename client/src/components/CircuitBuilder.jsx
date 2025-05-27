@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import BlochSpheres from './BlochSpheres';
+import ResultsViewer from './ResultsViewer';
 
 export default function CircuitBuilder() {
   const [numQubits, setNumQubits] = useState(2);
@@ -13,10 +14,6 @@ export default function CircuitBuilder() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    initializeCircuit();
-  }, [numQubits]);
-
   const initializeCircuit = async () => {
     setIsLoading(true);
     setError(null);
@@ -27,22 +24,15 @@ export default function CircuitBuilder() {
         body: JSON.stringify({ num_qubits: numQubits })
       });
       
-      if (!response.ok) {
-        throw new Error('Failed to initialize circuit');
-      }
-      
       const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Unknown error');
-      }
+      if (!response.ok) throw new Error(data.error || 'Failed to initialize');
       
       setGates([]);
       setResults(null);
-      setBlochSpheres([]);
+      setBlochSpheres(Array(numQubits).fill(null));
       setCircuitImage('');
     } catch (err) {
       setError(err.message);
-      console.error('Error initializing circuit:', err);
     } finally {
       setIsLoading(false);
     }
@@ -56,27 +46,20 @@ export default function CircuitBuilder() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: selectedGate,
+          gate: selectedGate,
           target: targetQubit,
           control: ['cx', 'swap'].includes(selectedGate) ? controlQubit : null
         })
       });
       
-      if (!response.ok) {
-        throw new Error('Failed to add gate');
-      }
-      
       const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Unknown error');
-      }
+      if (!response.ok) throw new Error(data.error || 'Failed to add gate');
       
-      setGates(data.circuit.gates);
-      setBlochSpheres(data.visualization.bloch_spheres);
-      setCircuitImage(data.visualization.circuit_image);
+      setGates(data.gates);
+      setBlochSpheres(data.bloch_spheres || []);
+      setCircuitImage(data.circuit_image || '');
     } catch (err) {
       setError(err.message);
-      console.error('Error adding gate:', err);
     } finally {
       setIsLoading(false);
     }
@@ -92,23 +75,23 @@ export default function CircuitBuilder() {
         body: JSON.stringify({ shots: 1024 })
       });
       
-      if (!response.ok) {
-        throw new Error('Failed to run simulation');
-      }
-      
       const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Unknown error');
-      }
+      if (!response.ok) throw new Error(data.error || 'Failed to run simulation');
       
-      setResults(data.results);
+      setResults({
+        counts: data.counts,
+        histogram: data.histogram_image
+      });
     } catch (err) {
       setError(err.message);
-      console.error('Error running simulation:', err);
     } finally {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    initializeCircuit();
+  }, [numQubits]);
 
   return (
     <div className="circuit-builder">
@@ -122,10 +105,7 @@ export default function CircuitBuilder() {
           <input 
             type="number" 
             value={numQubits}
-            onChange={(e) => {
-              const value = Math.max(1, Math.min(10, parseInt(e.target.value) || 2));
-              setNumQubits(value);
-            }}
+            onChange={(e) => setNumQubits(Math.max(1, Math.min(10, parseInt(e.target.value) || 2))}
             min="1"
             max="10"
             disabled={isLoading}
@@ -179,11 +159,7 @@ export default function CircuitBuilder() {
             </>
           )}
 
-          <button 
-            onClick={addGate} 
-            disabled={isLoading}
-            className="action-button"
-          >
+          <button onClick={addGate} disabled={isLoading}>
             {isLoading ? 'Adding...' : 'Add Gate'}
           </button>
         </div>
@@ -192,7 +168,6 @@ export default function CircuitBuilder() {
           <button 
             onClick={runSimulation} 
             disabled={isLoading || gates.length === 0}
-            className="action-button"
           >
             {isLoading ? 'Running...' : 'Run Simulation'}
           </button>
@@ -206,32 +181,19 @@ export default function CircuitBuilder() {
             <img 
               src={`data:image/png;base64,${circuitImage}`} 
               alt="Quantum circuit" 
-              className="circuit-image"
             />
           </div>
         )}
 
         <div className="state-visualization">
-          <h3>Qubit States</h3>
           <BlochSpheres spheres={blochSpheres} />
         </div>
 
         {results && (
-          <div className="results-viewer">
-            <h3>Measurement Results</h3>
-            <div className="histogram">
-              {Object.entries(results.counts).map(([state, count]) => (
-                <div key={state} className="histogram-bar">
-                  <div 
-                    className="bar" 
-                    style={{ height: `${(count / 1024) * 100}%` }}
-                  ></div>
-                  <span className="state-label">{state}</span>
-                  <span className="count-label">{count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ResultsViewer 
+            counts={results.counts} 
+            histogram={results.histogram} 
+          />
         )}
       </div>
     </div>

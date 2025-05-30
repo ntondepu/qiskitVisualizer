@@ -19,6 +19,27 @@ CORS(app)
 
 current_circuit = None
 
+@app.route('/api/upload-qasm', methods=['POST', 'OPTIONS'])
+def upload_qasm():
+    try:
+        qasm_str = request.json.get('qasm')
+        if not qasm_str:
+            return jsonify({'success': False, 'error': 'No QASM provided'}), 400
+        
+        # Load QASM into a QuantumCircuit
+        from qiskit import QuantumCircuit
+        circuit = QuantumCircuit.from_qasm_str(qasm_str)
+        global current_circuit
+        current_circuit = circuit
+        
+        return jsonify({
+            'success': True,
+            'message': 'QASM loaded successfully',
+            'num_qubits': circuit.num_qubits
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/init-circuit', methods=['POST'])
 def init_circuit():
     global current_circuit

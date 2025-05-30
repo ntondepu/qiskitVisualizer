@@ -1,12 +1,18 @@
 # server.py
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from qiskit import QuantumCircuit, transpile
 from qiskit.visualization import plot_bloch_multivector, plot_histogram
 from qiskit_aer import AerSimulator
-import matplotlib.pyplot as plt
 import base64
 import io
+import sys
+
+print(f"CONFIRMED: Matplotlib using {matplotlib.get_backend()} backend")
 
 app = Flask(__name__)
 CORS(app)

@@ -105,6 +105,49 @@ def add_gate():
         'circuit_image': circuit_image,
         'bloch_spheres': bloch_images
     })
+@app.route('/api/optimize', methods=['POST', 'OPTIONS'])
+def optimize_circuit():
+    try:
+        if current_circuit is None:
+            return jsonify({'success': False, 'error': 'No circuit to optimize'}), 400
+        
+        data = request.json
+        level = int(data.get('level', 1))  # Default to optimization level 1
+        
+        # Create a copy of the circuit for optimization
+        circuit_copy = current_circuit.copy()
+        
+        # Run optimization
+        optimized_circuit = transpile(circuit_copy, optimization_level=level)
+        
+        # Generate visualization of both circuits
+        original_img = io.BytesIO()
+        current_circuit.draw('mpl').savefig(original_img, format='png')
+        original_img.seek(0)
+        
+        optimized_img = io.BytesIO()
+        optimized_circuit.draw('mpl').savefig(optimized_img, format='png')
+        optimized_img.seek(0)
+        
+        return jsonify({
+            'success': True,
+            'original': {
+                'gate_count': len(current_circuit.data),
+                'depth': current_circuit.depth(),
+                'circuit_image': base64.b64encode(original_img.getvalue()).decode('utf-8')
+            },
+            'optimized': {
+                'gate_count': len(optimized_circuit.data),
+                'depth': optimized_circuit.depth(),
+                'circuit_image': base64.b64encode(optimized_img.getvalue()).decode('utf-8'),
+                'optimization_steps': [
+                    f"Reduced gates from {len(current_circuit.data)} to {len(optimized_circuit.data)}",
+                    f"Reduced depth from {current_circuit.depth()} to {optimized_circuit.depth()}"
+                ]
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/run-simulation', methods=['POST'])
 def run_simulation():

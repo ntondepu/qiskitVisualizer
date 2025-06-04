@@ -60,6 +60,13 @@ def init_circuit():
         'num_qubits': num_qubits
     })
 
+@app.route('/api/circuit-status')
+def circuit_status():
+    return jsonify({
+        'hasCircuit': current_circuit is not None,
+        'numQubits': current_circuit.num_qubits if current_circuit else 0
+    })
+
 @app.route('/add-gate', methods=['POST'])
 def add_gate():
     global current_circuit

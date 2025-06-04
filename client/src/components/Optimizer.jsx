@@ -1,24 +1,82 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function Optimizer() {
   const [optimizedCircuit, setOptimizedCircuit] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [originalMetrics, setOriginalMetrics] = useState(null);
   const [optimizationLevel, setOptimizationLevel] = useState(1);
+  const [error, setError] = useState(null);
+  const [circuitReady, setCircuitReady] = useState(false);
+
+  // Check if circuit exists when component mounts
+  useEffect(() => {
+    checkCircuitStatus();
+  }, []);
+
+  const checkCircuitStatus = async () => {
+    try {
+      const response = await fetch('/api/circuit-status');
+      const data = await response.json();
+      setCircuitReady(data.hasCircuit);
+    } catch (err) {
+      console.error('Error checking circuit status:', err);
+      setCircuitReady(false);
+    }
+  };
+
+  const initializeCircuit = async () => {
+    try {
+      const response = await fetch('/init-circuit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ num_qubits: 2 }) // Default to 2 qubits
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCircuitReady(true);
+        setError(null);
+        // Add a default gate (Hadamard on qubit 0)
+        await fetch('/add-gate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gate: 'h', target: 0 })
+        });
+      } else {
+        throw new Error(data.error || 'Failed to initialize circuit');
+      }
+    } catch (err) {
+      setError(err.message);
+      console.error('Circuit initialization error:', err);
+    }
+  };
 
   const optimize = async () => {
+    if (!circuitReady) {
+      setError('Please initialize a circuit first');
+      return;
+    }
+
     setIsLoading(true);
+    setError(null);
+    
     try {
       const response = await fetch('/api/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ level: optimizationLevel })
       });
+      
       const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Optimization failed');
+      }
+      
       setOptimizedCircuit(data.optimized);
       setOriginalMetrics(data.original);
-    } catch (error) {
-      console.error('Optimization failed:', error);
+    } catch (err) {
+      setError(err.message);
+      console.error('Optimization error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -28,6 +86,17 @@ export default function Optimizer() {
     <div className="optimizer">
       <h2>Circuit Optimizer</h2>
       
+      {error && (
+        <div className="error-message">
+          {error}
+          {!circuitReady && (
+            <button onClick={initializeCircuit} className="init-button">
+              Initialize Default Circuit
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="optimization-controls">
         <div className="optimization-level">
           <label>
@@ -35,6 +104,7 @@ export default function Optimizer() {
             <select
               value={optimizationLevel}
               onChange={(e) => setOptimizationLevel(parseInt(e.target.value))}
+              disabled={!circuitReady}
             >
               <option value="1">Level 1 (Basic)</option>
               <option value="2">Level 2 (Moderate)</option>
@@ -45,7 +115,8 @@ export default function Optimizer() {
 
         <button 
           onClick={optimize}
-          disabled={isLoading}
+          disabled={isLoading || !circuitReady}
+          className={`optimize-button ${!circuitReady ? 'disabled' : ''}`}
         >
           {isLoading ? 'Optimizing...' : 'Optimize Circuit'}
         </button>
@@ -62,6 +133,7 @@ export default function Optimizer() {
                 <img 
                   src={`data:image/png;base64,${originalMetrics.circuit_image}`} 
                   alt="Original circuit"
+                  className="circuit-image"
                 />
               )}
             </div>
@@ -76,6 +148,7 @@ export default function Optimizer() {
                 <img 
                   src={`data:image/png;base64,${optimizedCircuit.circuit_image}`} 
                   alt="Optimized circuit"
+                  className="circuit-image"
                 />
               )}
             </div>
@@ -91,6 +164,78 @@ export default function Optimizer() {
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        .optimizer {
+          padding: 20px;
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+        .optimization-controls {
+          display: flex;
+          gap: 20px;
+          align-items: center;
+          margin-bottom: 20px;
+        }
+        .optimization-level select {
+          margin-left: 10px;
+          padding: 5px;
+        }
+        button {
+          padding: 8px 16px;
+          background: #4CAF50;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        button.disabled {
+          background: #cccccc;
+          cursor: not-allowed;
+        }
+        button.init-button {
+          margin-left: 10px;
+          background: #2196F3;
+        }
+        .error-message {
+          color: #f44336;
+          padding: 10px;
+          background: #ffebee;
+          border-radius: 4px;
+          margin-bottom: 20px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .optimization-results {
+          margin-top: 30px;
+        }
+        .comparison {
+          display: flex;
+          gap: 30px;
+          margin-bottom: 20px;
+        }
+        .circuit-metrics {
+          flex: 1;
+          padding: 15px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+        }
+        .optimization-arrow {
+          display: flex;
+          align-items: center;
+          font-size: 24px;
+          color: #666;
+        }
+        .circuit-image {
+          max-width: 100%;
+          margin-top: 10px;
+          border: 1px solid #eee;
+        }
+        .optimization-details ul {
+          padding-left: 20px;
+        }
+      `}</style>
     </div>
   );
 }

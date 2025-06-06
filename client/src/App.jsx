@@ -8,12 +8,13 @@ import './styles.css';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState(0);
+  const [circuitQasm, setCircuitQasm] = useState('');
 
   const tabs = [
-    { label: 'Upload QASM', component: <QASMUploader /> },
-    { label: 'Build Circuit', component: <CircuitBuilder /> },
-    { label: 'Optimize', component: <Optimizer /> },
-    { label: 'Noise Simulation', component: <NoiseSimulator /> },
+    { label: 'Upload QASM', component: <QASMUploader onCircuitUpdate={setCircuitQasm} /> },
+    { label: 'Build Circuit', component: <CircuitBuilder onCircuitUpdate={setCircuitQasm} /> },
+    { label: 'Optimize', component: <Optimizer circuitQasm={circuitQasm} /> },
+    { label: 'Noise Simulation', component: <NoiseSimulator circuitQasm={circuitQasm} /> },
     { label: 'Challenges', component: <Challenges /> }
   ];
 

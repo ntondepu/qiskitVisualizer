@@ -207,16 +207,16 @@ def noise_simulation():
         shots = int(data.get('shots', 1024))
         noise_params = data.get('noise', {})
         
-        # Validate noise parameters
-        depolarizing = min(max(float(noise_params.get('depolarizing', 0)), 1.0)
-        bit_flip = min(max(float(noise_params.get('bit_flip', 0)), 1.0)
-        phase_flip = min(max(float(noise_params.get('phase_flip', 0)), 1.0)
+        # Corrected parameter validation
+        depolarizing = min(max(float(noise_params.get('depolarizing', 0)), 0), 1.0)
+        bit_flip = min(max(float(noise_params.get('bit_flip', 0)), 0), 1.0)
+        phase_flip = min(max(float(noise_params.get('phase_flip', 0)), 0), 1.0)
 
+        # Rest of your implementation...
         circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
         measured_circuit = circuit.copy()
         measured_circuit.measure_all()
 
-        # Create noise model
         noise_model = NoiseModel()
         if depolarizing > 0:
             error = depolarizing_error(depolarizing, 1)

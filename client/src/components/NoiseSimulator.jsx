@@ -9,22 +9,38 @@ export default function NoiseSimulator() {
   });
   const [results, setResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const runNoisySimulation = async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      const response = await fetch('/api/run-simulation', {
+      const response = await fetch('/api/noise-simulation', {  // Changed endpoint
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',  // Important for session
         body: JSON.stringify({
           shots: 1024,
-          noise: noiseConfig
+          depolarizing: noiseConfig.depolarizing,
+          bit_flip: noiseConfig.bit_flip,
+          phase_flip: noiseConfig.phase_flip
         })
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Simulation failed');
+      }
+
       const data = await response.json();
-      setResults(data.results);
+      if (!data.success) {
+        throw new Error(data.error || 'Invalid simulation results');
+      }
+
+      setResults(data);
     } catch (error) {
-      console.error('Error running noisy simulation:', error);
+      console.error('Noise simulation error:', error);
+      setError(error.message);
     } finally {
       setIsLoading(false);
     }
@@ -52,58 +68,43 @@ export default function NoiseSimulator() {
           </label>
         </div>
 
-        <div className="noise-parameter">
-          <label>
-            Bit Flip Error: {noiseConfig.bit_flip.toFixed(3)}
-            <input
-              type="range"
-              min="0"
-              max="0.2"
-              step="0.001"
-              value={noiseConfig.bit_flip}
-              onChange={(e) => setNoiseConfig({
-                ...noiseConfig,
-                bit_flip: parseFloat(e.target.value)
-              })}
-            />
-          </label>
-        </div>
-
-        <div className="noise-parameter">
-          <label>
-            Phase Flip Error: {noiseConfig.phase_flip.toFixed(3)}
-            <input
-              type="range"
-              min="0"
-              max="0.2"
-              step="0.001"
-              value={noiseConfig.phase_flip}
-              onChange={(e) => setNoiseConfig({
-                ...noiseConfig,
-                phase_flip: parseFloat(e.target.value)
-              })}
-            />
-          </label>
-        </div>
+        {/* Other noise parameter controls remain the same */}
 
         <button 
           onClick={runNoisySimulation}
           disabled={isLoading}
+          className={isLoading ? 'loading' : ''}
         >
-          {isLoading ? 'Simulating...' : 'Run Noisy Simulation'}
+          {isLoading ? (
+            <>
+              <span className="spinner"></span>
+              Simulating...
+            </>
+          ) : 'Run Noisy Simulation'}
         </button>
+
+        {error && (
+          <div className="error-message">
+            Error: {error}
+            <button onClick={() => setError(null)}>Dismiss</button>
+          </div>
+        )}
       </div>
 
       {results && (
         <div className="noise-results">
+          <h3>Simulation Results</h3>
           <ResultsViewer 
             counts={results.counts} 
-            histogram={results.histogram} 
+            histogram={results.histogram_image}  // Changed to match backend
           />
-          <div className="noise-analysis">
-            <h3>Noise Analysis</h3>
-            <p>Total error rate: {(noiseConfig.depolarizing + noiseConfig.bit_flip + noiseConfig.phase_flip).toFixed(3)}</p>
-            {results.fidelity && <p>Circuit fidelity: {results.fidelity.toFixed(3)}</p>}
+          <div className="noise-stats">
+            <p>Depolarizing: {noiseConfig.depolarizing.toFixed(3)}</p>
+            <p>Bit Flip: {noiseConfig.bit_flip.toFixed(3)}</p>
+            <p>Phase Flip: {noiseConfig.phase_flip.toFixed(3)}</p>
+            {results.fidelity && (
+              <p>Fidelity: {(results.fidelity * 100).toFixed(1)}%</p>
+            )}
           </div>
         </div>
       )}

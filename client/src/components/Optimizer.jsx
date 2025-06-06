@@ -10,6 +10,25 @@ export default function Optimizer() {
 
   // Check if circuit exists when component mounts
   useEffect(() => {
+    const checkCircuitStatus = async () => {
+      try {
+        const response = await fetch('http://localhost:5001/api/circuit-status', {
+          credentials: 'include' // Important for session cookies
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        setCircuitReady(data.hasCircuit);
+      } catch (err) {
+        console.error('Error checking circuit status:', err);
+        setError('Failed to check circuit status');
+        setCircuitReady(false);
+      }
+    };
+
     checkCircuitStatus();
   }, []);
 

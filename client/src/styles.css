@@ -316,6 +316,36 @@ h3 {
   }
 }
 /* ===== Visualization Components ===== */
+button.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
+  margin-right: 0.5em;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-message {
+  color: #d32f2f;
+  background: #ffebee;
+  padding: 0.5em 1em;
+  border-radius: 4px;
+  margin-top: 1em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 .visualization-container {
   display: grid;
   grid-template-columns: 1fr 1fr;

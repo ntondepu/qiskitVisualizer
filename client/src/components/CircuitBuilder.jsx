@@ -20,35 +20,36 @@ export default function CircuitBuilder() {
   };
 
   const initializeCircuit = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/init-circuit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ num_qubits: numQubits })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to initialize circuit');
-      }
-      
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Unknown error');
-      }
-      
-      setGates([]);
-      setResults(null);
-      setBlochSpheres([]);
-      setCircuitImage('');
-    } catch (err) {
-      setError(err.message);
-      console.error('Error initializing circuit:', err);
-    } finally {
-      setIsLoading(false);
+  setIsLoading(true);
+  setError(null);
+  try {
+    const response = await fetch('http://localhost:5001/api/init-circuit', {  // Changed this line
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',  // Added for session cookies
+      body: JSON.stringify({ num_qubits: numQubits })
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to initialize circuit');
     }
-  };
+    
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Unknown error');
+    }
+    
+    setGates([]);
+    setResults(null);
+    setBlochSpheres([]);
+    setCircuitImage('');
+  } catch (err) {
+    setError(err.message);
+    console.error('Error initializing circuit:', err);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const addGate = async () => {
     setIsLoading(true);

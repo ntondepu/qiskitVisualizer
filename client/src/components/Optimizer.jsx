@@ -184,7 +184,7 @@ export default function Optimizer() {
         </div>
       )}
 
-      <style jsx>{`
+      <style jsx="true">{`
         .optimizer {
           padding: 20px;
           max-width: 1200px;

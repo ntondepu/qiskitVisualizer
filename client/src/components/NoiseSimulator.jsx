@@ -14,33 +14,42 @@ export default function NoiseSimulator() {
   const runNoisySimulation = async () => {
     setIsLoading(true);
     setError(null);
+    
     try {
-      const response = await fetch('/api/noise-simulation', {  // Changed endpoint
+      // First check if circuit exists
+      const circuitCheck = await fetch('/api/circuit-status', {
+        credentials: 'include'
+      });
+      const circuitData = await circuitCheck.json();
+      
+      if (!circuitData.hasCircuit) {
+        throw new Error('Please build a circuit first');
+      }
+
+      // Then run simulation
+      const response = await fetch('/api/noise-simulation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',  // Important for session
+        credentials: 'include',
         body: JSON.stringify({
           shots: 1024,
-          depolarizing: noiseConfig.depolarizing,
-          bit_flip: noiseConfig.bit_flip,
-          phase_flip: noiseConfig.phase_flip
+          noise: {
+            depolarizing: noiseConfig.depolarizing,
+            bit_flip: noiseConfig.bit_flip,
+            phase_flip: noiseConfig.phase_flip
+          }
         })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Simulation failed');
-      }
-
       const data = await response.json();
       if (!data.success) {
-        throw new Error(data.error || 'Invalid simulation results');
+        throw new Error(data.error || 'Simulation failed');
       }
-
+      
       setResults(data);
     } catch (error) {
-      console.error('Noise simulation error:', error);
       setError(error.message);
+      console.error('Simulation error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -68,7 +77,39 @@ export default function NoiseSimulator() {
           </label>
         </div>
 
-        {/* Other noise parameter controls remain the same */}
+        <div className="noise-parameter">
+          <label>
+            Bit Flip Error: {noiseConfig.bit_flip.toFixed(3)}
+            <input
+              type="range"
+              min="0"
+              max="0.2"
+              step="0.001"
+              value={noiseConfig.bit_flip}
+              onChange={(e) => setNoiseConfig({
+                ...noiseConfig,
+                bit_flip: parseFloat(e.target.value)
+              })}
+            />
+          </label>
+        </div>
+
+        <div className="noise-parameter">
+          <label>
+            Phase Flip Error: {noiseConfig.phase_flip.toFixed(3)}
+            <input
+              type="range"
+              min="0"
+              max="0.2"
+              step="0.001"
+              value={noiseConfig.phase_flip}
+              onChange={(e) => setNoiseConfig({
+                ...noiseConfig,
+                phase_flip: parseFloat(e.target.value)
+              })}
+            />
+          </label>
+        </div>
 
         <button 
           onClick={runNoisySimulation}
@@ -96,12 +137,12 @@ export default function NoiseSimulator() {
           <h3>Simulation Results</h3>
           <ResultsViewer 
             counts={results.counts} 
-            histogram={results.histogram_image}  // Changed to match backend
+            histogram={results.histogram_image}
           />
           <div className="noise-stats">
-            <p>Depolarizing: {noiseConfig.depolarizing.toFixed(3)}</p>
-            <p>Bit Flip: {noiseConfig.bit_flip.toFixed(3)}</p>
-            <p>Phase Flip: {noiseConfig.phase_flip.toFixed(3)}</p>
+            <p>Depolarizing: {results.noise_parameters.depolarizing.toFixed(3)}</p>
+            <p>Bit Flip: {results.noise_parameters.bit_flip.toFixed(3)}</p>
+            <p>Phase Flip: {results.noise_parameters.phase_flip.toFixed(3)}</p>
             {results.fidelity && (
               <p>Fidelity: {(results.fidelity * 100).toFixed(1)}%</p>
             )}

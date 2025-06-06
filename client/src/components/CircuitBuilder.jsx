@@ -52,31 +52,50 @@ export default function CircuitBuilder() {
 };
 
   const addGate = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/add-gate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gate: selectedGate,
-          target: targetQubit,
-          control: ['cx', 'swap'].includes(selectedGate) ? controlQubit : null
-        })
-      });
-      
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to add gate');
-      
-      setGates(data.gates);
-      setBlochSpheres(data.bloch_spheres || []);
-      setCircuitImage(data.circuit_image || '');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+  setIsLoading(true);
+  setError(null);
+  try {
+    const response = await fetch('http://localhost:5001/api/add-gate', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',  // Crucial for session/cookies
+      body: JSON.stringify({
+        gate: selectedGate,
+        target: targetQubit,
+        control: ['cx', 'swap'].includes(selectedGate) ? controlQubit : undefined
+      })
+    });
+
+    // Improved error handling
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
     }
-  };
+
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Operation failed');
+    }
+
+    setGates(data.gates || []);
+    setBlochSpheres(data.bloch_spheres || []);
+    setCircuitImage(data.circuit_image || '');
+    
+  } catch (err) {
+    setError(err.message);
+    console.error('Gate operation failed:', {
+      error: err,
+      gate: selectedGate,
+      target: targetQubit,
+      control: ['cx', 'swap'].includes(selectedGate) ? controlQubit : null
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const runSimulation = async () => {
     setIsLoading(true);

@@ -5,26 +5,39 @@ import { fileURLToPath, URL } from 'node:url';
 export default defineConfig({
   plugins: [react()],
   
-  // Development server configuration
   server: {
     port: 5173,
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:5001', // Your Flask backend
+        target: 'http://localhost:5001',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, ''),
-        ws: true, // Enable WebSocket proxying if needed
+        ws: true,
+        configure: (proxy, options) => {
+          // Important for session cookies to work
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('Origin', 'http://localhost:5173');
+          });
+          proxy.on('proxyRes', (proxyRes) => {
+            proxyRes.headers['Access-Control-Allow-Origin'] = 'http://localhost:5173';
+            proxyRes.headers['Access-Control-Allow-Credentials'] = 'true';
+          });
+        }
       }
+    },
+    // Enable CORS for development
+    cors: {
+      origin: 'http://localhost:5001',
+      credentials: true
     }
   },
   
-  // Production build configuration
   build: {
     outDir: '../server/static',
     emptyOutDir: true,
-    sourcemap: true, // Useful for debugging
+    sourcemap: true,
     rollupOptions: {
       output: {
         assetFileNames: 'assets/[name].[hash].[ext]',
@@ -34,7 +47,6 @@ export default defineConfig({
     }
   },
   
-  // Resolve aliases for cleaner imports
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -42,7 +54,6 @@ export default defineConfig({
     }
   },
   
-  // CSS configuration
   css: {
     devSourcemap: true,
     modules: {

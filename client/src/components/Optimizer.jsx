@@ -70,36 +70,44 @@ export default function Optimizer() {
   };
 
   const optimize = async () => {
-    if (!circuitReady) {
-      setError('Please initialize a circuit first');
-      return;
+  setIsLoading(true);
+  setError(null);
+  
+  try {
+    // Use full URL in development
+    const apiUrl = import.meta.env.DEV 
+      ? 'http://localhost:5001/api/optimize' 
+      : '/api/optimize';
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // Important for sessions
+      body: JSON.stringify({ level: optimizationLevel })
+    });
+
+    // First check if response is OK
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Server responded with ${response.status}: ${errorText}`);
     }
 
-    setIsLoading(true);
-    setError(null);
+    // Then try to parse JSON
+    const data = await response.json();
     
-    try {
-      const response = await fetch('/api/optimize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ level: optimizationLevel })
-      });
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Optimization failed');
-      }
-      
-      setOptimizedCircuit(data.optimized);
-      setOriginalMetrics(data.original);
-    } catch (err) {
-      setError(err.message);
-      console.error('Optimization error:', err);
-    } finally {
-      setIsLoading(false);
+    if (!data.success) {
+      throw new Error(data.error || 'Optimization failed');
     }
-  };
+
+    setOptimizedCircuit(data.optimized);
+    setOriginalMetrics(data.original);
+  } catch (err) {
+    console.error('Optimization error:', err);
+    setError(err.message);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="optimizer">

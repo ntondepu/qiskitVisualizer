@@ -131,6 +131,16 @@ def add_gate():
 
 @app.route('/api/optimize', methods=['POST', 'OPTIONS'])
 def optimize_circuit():
+    # Handle OPTIONS preflight request
+    if request.method == 'OPTIONS':
+        response = jsonify({'success': True})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+    
+    # Handle POST request
     try:
         if 'current_circuit' not in session:
             return jsonify({'success': False, 'error': 'No circuit to optimize'}), 400
@@ -149,7 +159,7 @@ def optimize_circuit():
         optimized_circuit.draw('mpl').savefig(optimized_img, format='png')
         optimized_img.seek(0)
         
-        return jsonify({
+        response = jsonify({
             'success': True,
             'original': {
                 'gate_count': len(circuit.data),
@@ -166,8 +176,17 @@ def optimize_circuit():
                 ]
             }
         })
+        
+        # Add CORS headers to the main response too
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+        
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        error_response = jsonify({'success': False, 'error': str(e)})
+        error_response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
+        error_response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return error_response, 500
 
 @app.route('/run-simulation', methods=['POST'])
 def run_simulation():

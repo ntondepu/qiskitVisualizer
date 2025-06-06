@@ -188,33 +188,83 @@ def optimize_circuit():
         error_response.headers.add('Access-Control-Allow-Credentials', 'true')
         return error_response, 500
 
-@app.route('/run-simulation', methods=['POST'])
-def run_simulation():
+@app.route('/api/noise-simulation', methods=['POST', 'OPTIONS'])
+def noise_simulation():
+    # Handle OPTIONS preflight
+    if request.method == 'OPTIONS':
+        response = jsonify({'success': True})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+
     try:
         if 'current_circuit' not in session:
-            return jsonify({'success': False, 'error': 'No circuit to simulate'}), 400
-            
-        circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
-        shots = int(request.json.get('shots', 1024))
+            return jsonify({'success': False, 'error': 'No circuit loaded'}), 400
+
+        data = request.json
+        shots = int(data.get('shots', 1024))
+        noise_params = data.get('noise', {})
         
+        # Validate noise parameters
+        depolarizing = min(max(float(noise_params.get('depolarizing', 0)), 1.0)
+        bit_flip = min(max(float(noise_params.get('bit_flip', 0)), 1.0)
+        phase_flip = min(max(float(noise_params.get('phase_flip', 0)), 1.0)
+
+        circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
         measured_circuit = circuit.copy()
         measured_circuit.measure_all()
-        
-        counts = Aer.get_backend('qasm_simulator').run(
+
+        # Create noise model
+        noise_model = NoiseModel()
+        if depolarizing > 0:
+            error = depolarizing_error(depolarizing, 1)
+            noise_model.add_all_qubit_quantum_error(error, ['h', 'x', 'y', 'z', 'cx', 'swap'])
+        if bit_flip > 0:
+            error = pauli_error([('X', bit_flip), ('I', 1-bit_flip)])
+            noise_model.add_all_qubit_quantum_error(error, ['measure'])
+        if phase_flip > 0:
+            error = pauli_error([('Z', phase_flip), ('I', 1-phase_flip)])
+            noise_model.add_all_qubit_quantum_error(error, ['measure'])
+
+        # Run noisy simulation
+        result = Aer.get_backend('qasm_simulator').run(
             transpile(measured_circuit, Aer.get_backend('qasm_simulator')),
-            shots=shots
-        ).result().get_counts()
+            shots=shots,
+            noise_model=noise_model
+        ).result()
         
+        counts = result.get_counts()
+        
+        # Generate visualization
         buf = io.BytesIO()
-        plot_histogram(counts).savefig(buf, format='png')
+        plot_histogram(counts).savefig(buf, format='png', bbox_inches='tight')
         histogram = base64.b64encode(buf.getvalue()).decode('utf-8')
         plt.close()
         
-        return jsonify({
+        # Calculate fidelity
+        fidelity = None
+        if any([depolarizing, bit_flip, phase_flip]):
+            ideal_backend = Aer.get_backend('statevector_simulator')
+            ideal_state = execute(circuit, ideal_backend).result().get_statevector()
+            noisy_state = execute(circuit, ideal_backend, noise_model=noise_model).result().get_statevector()
+            fidelity = float(np.abs(np.dot(ideal_state.conj(), noisy_state))**2)
+
+        response = jsonify({
             'success': True,
             'counts': counts,
-            'histogram_image': histogram
+            'histogram_image': histogram,
+            'fidelity': fidelity,
+            'noise_parameters': {
+                'depolarizing': depolarizing,
+                'bit_flip': bit_flip,
+                'phase_flip': phase_flip
+            }
         })
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
+        return response
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

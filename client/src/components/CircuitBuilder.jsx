@@ -98,32 +98,44 @@ export default function CircuitBuilder() {
 };
 
   const runSimulation = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/run-simulation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shots: 1024 })
-      });
-      
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to run simulation');
-      
-      setResults({
-        counts: data.counts,
-        histogram: data.histogram_image
-      });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  setIsLoading(true);
+  setError(null);
+  try {
+    const response = await fetch('http://localhost:5001/api/run-simulation', {  // Added /api prefix
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',  // Required for sessions
+      body: JSON.stringify({ 
+        shots: 1024 
+      })
+    });
 
-  useEffect(() => {
-    initializeCircuit();
-  }, [numQubits]);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error! Status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Simulation failed');
+    }
+
+    setResults({
+      counts: data.counts,
+      histogram: data.histogram_image
+    });
+
+  } catch (err) {
+    setError(err.message);
+    console.error('Simulation error:', {
+      error: err,
+      request: { shots: 1024 }
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="circuit-builder">

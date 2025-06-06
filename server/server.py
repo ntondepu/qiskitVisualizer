@@ -57,10 +57,26 @@ def init_circuit():
 
 @app.route('/api/circuit-status', methods=['GET'])
 def circuit_status():
-    return jsonify({
-        'hasCircuit': 'current_circuit' in session,
-        'numQubits': QuantumCircuit.from_qasm_str(session['current_circuit']).num_qubits if 'current_circuit' in session else 0
-    })
+    try:
+        if 'current_circuit' in session:
+            circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
+            return jsonify({
+                'success': True,
+                'hasCircuit': True,
+                'numQubits': circuit.num_qubits,
+                'gateCount': len(circuit.data)
+            })
+        return jsonify({
+            'success': True,
+            'hasCircuit': False,
+            'numQubits': 0,
+            'gateCount': 0
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/add-gate', methods=['POST'])
 def add_gate():

@@ -406,7 +406,7 @@ def optimize_circuit():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/noise-simulation', methods=['POST'])
+@app.route('/api/noise-simulation', methods=["POST"])
 def noise_simulation():
     try:
         if 'current_circuit' not in session:
@@ -424,7 +424,6 @@ def noise_simulation():
             }), 400
 
         noise_params = data.get('noise', {})
-
         depolarizing = min(max(float(noise_params.get('depolarizing', 0)), 0), 1.0)
         bit_flip = min(max(float(noise_params.get('bit_flip', 0)), 0), 1.0)
         phase_flip = min(max(float(noise_params.get('phase_flip', 0)), 0), 1.0)
@@ -434,12 +433,18 @@ def noise_simulation():
         measured_circuit.measure_all()
 
         noise_model = NoiseModel()
+        
+        # Single-qubit errors
         if depolarizing > 0:
-            error = depolarizing_error(depolarizing, 1)
-            noise_model.add_all_qubit_quantum_error(error, ['h', 'x', 'y', 'z', 'cx', 'swap'])
+            error_1q = depolarizing_error(depolarizing, 1)
+            error_2q = depolarizing_error(depolarizing, 2)
+            noise_model.add_all_qubit_quantum_error(error_1q, ['h', 'x', 'y', 'z'])
+            noise_model.add_all_qubit_quantum_error(error_2q, ['cx', 'swap'])
+
         if bit_flip > 0:
             error = pauli_error([('X', bit_flip), ('I', 1-bit_flip)])
             noise_model.add_all_qubit_quantum_error(error, ['measure'])
+
         if phase_flip > 0:
             error = pauli_error([('Z', phase_flip), ('I', 1-phase_flip)])
             noise_model.add_all_qubit_quantum_error(error, ['measure'])
@@ -463,7 +468,8 @@ def noise_simulation():
         if any([depolarizing, bit_flip, phase_flip]):
             ideal_backend = Aer.get_backend('statevector_simulator')
             ideal_state = execute(circuit, ideal_backend).result().get_statevector()
-            noisy_state = execute(circuit, ideal_backend, noise_model=noise_model).result().get_statevector()
+            noisy_state = execute(circuit, ideal_backend,
+                noise_model=noise_model).result().get_statevector()
             fidelity = float(np.abs(np.dot(ideal_state.conj(), noisy_state))**2)
 
         return jsonify({

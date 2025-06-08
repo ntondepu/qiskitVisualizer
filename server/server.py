@@ -12,6 +12,8 @@ import io
 import numpy as np
 import json
 import os
+import tempfile
+import uuid
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -41,43 +43,33 @@ def _add_cors_headers(response):
     response.headers.add('Access-Control-Allow-Credentials', 'true')
     return response
 
-MAX_FILE_SIZE = 1 * 1024 * 1024  # 1MB
-
-@app.route('/api/upload-qasm', methods=['POST'])
+@app.route('/api/upload-qasm', methods=['POST', 'OPTIONS'])
 def upload_qasm():
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'error': 'No file uploaded'}), 400
-        
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'success': False, 'error': 'No selected file'}), 400
-        
-    if not allowed_file(file.filename):
-        return jsonify({'success': False, 'error': 'Invalid file type'}), 400
-
     if request.method == 'OPTIONS':
         return _build_cors_preflight_response()
     
-    # Generate unique temp filename
-    temp_dir = tempfile.gettempdir()
-    filename = f"qasm_{uuid.uuid4().hex}.qasm"
-    filepath = os.path.join(temp_dir, filename)
-    
     try:
-        # Save file temporarily
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file uploaded'}), 400
+            
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No selected file'}), 400
+            
+        if not allowed_file(file.filename):
+            return jsonify({'success': False, 'error': 'Invalid file type'}), 400
+
+        # Create temp file
+        temp_dir = tempfile.gettempdir()
+        filename = f"qasm_{uuid.uuid4().hex}.qasm"
+        filepath = os.path.join(temp_dir, filename)
         file.save(filepath)
         
-        # Read and validate content
+        # Process QASM file
         with open(filepath, 'r') as f:
             qasm_str = f.read()
-            
-        if not qasm_str.strip():
-            raise ValueError("Empty QASM file")
         
-        # Process QASM file
         circuit = QuantumCircuit.from_qasm_str(qasm_str)
-        if circuit.num_qubits == 0:
-            raise ValueError("Circuit has no qubits")
         
         # Generate visualization
         buf = io.BytesIO()
@@ -85,21 +77,32 @@ def upload_qasm():
         buf.seek(0)
         image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
         
-        return jsonify({
+        # Clean up
+        os.remove(filepath)
+        
+        return _add_cors_headers(jsonify({
             'success': True,
             'circuit_image': image_base64,
             'num_qubits': circuit.num_qubits,
             'gates': [str(gate) for gate in circuit.data]
-        })
+        }))
         
     except Exception as e:
-        return jsonify({
-            'success': False, 
-            'error': f"Processing failed: {str(e)}"
-        }), 400
-    finally:
-        if os.path.exists(filepath):
+        if 'filepath' in locals() and os.path.exists(filepath):
             os.remove(filepath)
+        return _add_cors_headers(jsonify({
+            'success': False, 
+            'error': str(e)
+        })), 500
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'healthy'}), 200
+
+if __name__ == '__main__':
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
+    app.run(port=5001, debug=True, host='0.0.0.0')
 
 @app.route('/api/init-circuit', methods=['POST', 'OPTIONS'])
 def init_circuit():

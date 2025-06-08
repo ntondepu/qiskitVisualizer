@@ -6,6 +6,21 @@ export default function QASMUploader() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const [fileName, setFileName] = useState('');
+    const [backendStatus, setBackendStatus] = useState('unknown');
+
+    const checkBackendHealth = async () => {
+        try {
+            const response = await fetch('http://localhost:5001/health', {
+                credentials: 'include',
+                headers: { 'Accept': 'application/json' }
+            });
+            setBackendStatus(response.ok ? 'healthy' : 'unhealthy');
+            return response.ok;
+        } catch {
+            setBackendStatus('unreachable');
+            return false;
+        }
+    };
 
     const handleFileUpload = async (event) => {
         const file = event.target.files[0];
@@ -17,37 +32,33 @@ export default function QASMUploader() {
         setFileName(file.name);
 
         try {
-            // First check if backend is reachable
-            try {
-                const healthCheck = await fetch('http://localhost:5001/health', {
-                    credentials: 'include',
-                    headers: {
-                        'Accept': 'application/json',
-                    }
-                });
-                if (!healthCheck.ok) {
-                    throw new Error('Backend server is not responding');
-                }
-            } catch (healthError) {
-                throw new Error('Cannot connect to backend server. Please make sure it is running on port 5001.');
+            // Verify backend connection first
+            const isHealthy = await checkBackendHealth();
+            if (!isHealthy) {
+                throw new Error(`Backend server is ${backendStatus}. Please ensure it's running on port 5001.`);
             }
 
-            // Proceed with file upload
+            // Clear any existing circuit state
+            await fetch('http://localhost:5001/api/init-circuit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ num_qubits: 1 }) // Reset to minimal circuit
+            });
+
+            // Upload and process QASM file
             const formData = new FormData();
             formData.append('file', file);
 
             const response = await fetch('http://localhost:5001/api/upload-qasm', {
                 method: 'POST',
                 body: formData,
-                credentials: 'include',
-                headers: {
-                    'Accept': 'application/json',
-                }
+                credentials: 'include'
             });
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `Server error: ${response.status}`);
+                throw new Error(errorData.error || `Server returned status ${response.status}`);
             }
 
             const data = await response.json();
@@ -63,15 +74,15 @@ export default function QASMUploader() {
             setResults({
                 ...data,
                 num_qubits: data.num_qubits,
-                num_gates: data.gates ? data.gates.length : 0,
+                num_gates: data.gates?.length || 0,
                 bloch_spheres: data.bloch_spheres || Array(data.num_qubits).fill(null)
             });
         } catch (error) {
-            console.error('Upload error.', error);
+            console.error('Upload error:', error);
             let errorMessage = error.message;
 
             if (error.message.includes('Failed to fetch')) {
-                errorMessage = 'Connection failed. Please ensure:\n1. Backend server is running (flask run)\n2. Server is on port 5001\n3. No CORS issues (check browser console)';
+                errorMessage = 'Connection failed. Please check:\n1. Backend is running\n2. Correct port (5001)\n3. CORS configuration\n4. Network connectivity';
             }
             setError(errorMessage);
         } finally {
@@ -82,6 +93,9 @@ export default function QASMUploader() {
     return (
         <div className="qasm-uploader">
             <h2>QASM File Upload</h2>
+            <div className="backend-status">
+                Backend status: <span className={backendStatus}>{backendStatus}</span>
+            </div>
 
             <div className="upload-controls">
                 <label className="file-input-label">
@@ -93,6 +107,7 @@ export default function QASMUploader() {
                         disabled={isLoading}
                     />
                 </label>
+                <p className="file-hint">Supported formats: .qasm (OpenQASM 2.0)</p>
             </div>
 
             {isLoading && (
@@ -106,7 +121,10 @@ export default function QASMUploader() {
                 <div className="error-message">
                     <h3>Error</h3>
                     <p style={{ whiteSpace: 'pre-line' }}>{error}</p>
-                    <button onClick={() => setError(null)}>Try Again</button>
+                    <div className="error-actions">
+                        <button onClick={() => setError(null)}>Dismiss</button>
+                        <button onClick={checkBackendHealth}>Check Backend</button>
+                    </div>
                 </div>
             )}
 
@@ -139,7 +157,10 @@ export default function QASMUploader() {
                             <h4>Gate Sequence</h4>
                             <ul>
                                 {results.gates.map((gate, index) => (
-                                    <li key={index}>{gate}</li>
+                                    <li key={`gate-${index}`}>
+                                        <span className="gate-index">{index + 1}.</span>
+                                        <span className="gate-name">{gate}</span>
+                                    </li>
                                 ))}
                             </ul>
                         </div>

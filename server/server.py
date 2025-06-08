@@ -9,6 +9,7 @@ from qiskit_aer import Aer
 from qiskit_aer.noise import NoiseModel, depolarizing_error, pauli_error
 import base64
 import io
+import tempfile
 import numpy as np
 import json
 import os
@@ -71,18 +72,31 @@ def upload_qasm():
         
         circuit = QuantumCircuit.from_qasm_str(qasm_str)
         
-        # Generate visualization
-        buf = io.BytesIO()
-        circuit.draw('mpl').savefig(buf, format='png')
-        buf.seek(0)
-        image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+        # Generate circuit visualization
+        circuit_buf = io.BytesIO()
+        circuit.draw('mpl').savefig(circuit_buf, format='png')
+        circuit_buf.seek(0)
+        circuit_image = base64.b64encode(circuit_buf.getvalue()).decode('utf-8')
+        
+        # Generate Bloch spheres for each qubit
+        bloch_images = []
+        simulator = Aer.get_backend('statevector_simulator')
+        result = simulator.run(circuit).result()
+        statevector = result.get_statevector()
+        
+        for qubit in range(circuit.num_qubits):
+            buf = io.BytesIO()
+            plot_bloch_multivector(statevector).savefig(buf, format='png')
+            bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+            plt.close()
         
         # Clean up
         os.remove(filepath)
         
         return _add_cors_headers(jsonify({
             'success': True,
-            'circuit_image': image_base64,
+            'circuit_image': circuit_image,
+            'bloch_spheres': bloch_images,
             'num_qubits': circuit.num_qubits,
             'gates': [str(gate) for gate in circuit.data]
         }))

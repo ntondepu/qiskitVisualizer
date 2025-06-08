@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import BlochSpheres from './BlochSpheres';
 
 export default function QASMUploader() {
@@ -7,6 +7,8 @@ export default function QASMUploader() {
     const [error, setError] = useState(null);
     const [fileName, setFileName] = useState('');
     const [backendStatus, setBackendStatus] = useState('unknown');
+    const [availableBackends, setAvailableBackends] = useState([]);
+    const [selectedBackend, setSelectedBackend] = useState('statevector_simulator');
 
     const checkBackendHealth = async () => {
         try {
@@ -14,13 +16,38 @@ export default function QASMUploader() {
                 credentials: 'include',
                 headers: { 'Accept': 'application/json' }
             });
-            setBackendStatus(response.ok ? 'healthy' : 'unhealthy');
-            return response.ok;
-        } catch {
+            
+            if (response.ok) {
+                const data = await response.json();
+                setAvailableBackends(data.backends || []);
+                
+                // Update selected backend if current selection is not available
+                if (data.backends && !data.backends.includes(selectedBackend)) {
+                    setSelectedBackend(data.backends[0] || 'statevector_simulator');
+                }
+                
+                setBackendStatus('healthy');
+                return true;
+            } else {
+                setBackendStatus('unhealthy');
+                return false;
+            }
+        } catch (err) {
+            console.error('Health check failed:', err);
             setBackendStatus('unreachable');
             return false;
         }
     };
+
+    useEffect(() => {
+        // Initial health check when component mounts
+        checkBackendHealth();
+        
+        // Set up periodic health checks (every 30 seconds)
+        const intervalId = setInterval(checkBackendHealth, 30000);
+        
+        return () => clearInterval(intervalId);
+    }, []);
 
     const handleFileUpload = async (event) => {
         const file = event.target.files[0];
@@ -53,7 +80,10 @@ export default function QASMUploader() {
             const response = await fetch('http://localhost:5001/api/upload-qasm', {
                 method: 'POST',
                 body: formData,
-                credentials: 'include'
+                credentials: 'include',
+                headers: {
+                    'Backend': selectedBackend
+                }
             });
 
             if (!response.ok) {
@@ -75,7 +105,8 @@ export default function QASMUploader() {
                 ...data,
                 num_qubits: data.num_qubits,
                 num_gates: data.gates?.length || 0,
-                bloch_spheres: data.bloch_spheres || Array(data.num_qubits).fill(null)
+                bloch_spheres: data.bloch_spheres || Array(data.num_qubits).fill(null),
+                backend_used: data.backend_used || selectedBackend
             });
         } catch (error) {
             console.error('Upload error:', error);
@@ -93,8 +124,44 @@ export default function QASMUploader() {
     return (
         <div className="qasm-uploader">
             <h2>QASM File Upload</h2>
-            <div className="backend-status">
-                Backend status: <span className={backendStatus}>{backendStatus}</span>
+            
+            <div className="backend-info">
+                <div className="backend-status">
+                    Backend status: 
+                    <span className={`status-${backendStatus}`}>
+                        {backendStatus}
+                        {backendStatus === 'healthy' && availableBackends.length > 0 && (
+                            <span> ({availableBackends.length} backends available)</span>
+                        )}
+                    </span>
+                </div>
+                
+                {availableBackends.length > 0 && (
+                    <div className="backend-selector">
+                        <label htmlFor="backend-select">Simulation Backend:</label>
+                        <select
+                            id="backend-select"
+                            value={selectedBackend}
+                            onChange={(e) => setSelectedBackend(e.target.value)}
+                            disabled={isLoading || backendStatus !== 'healthy'}
+                        >
+                            {availableBackends.map(backend => (
+                                <option key={backend} value={backend}>
+                                    {backend.replace(/_simulator$/, '').replace(/_/g, ' ').toUpperCase()}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+                
+                <button 
+                    className="refresh-btn"
+                    onClick={checkBackendHealth}
+                    disabled={isLoading}
+                    title="Refresh backend status"
+                >
+                    ⟳ Refresh
+                </button>
             </div>
 
             <div className="upload-controls">
@@ -104,7 +171,7 @@ export default function QASMUploader() {
                         type="file"
                         accept=".qasm"
                         onChange={handleFileUpload}
-                        disabled={isLoading}
+                        disabled={isLoading || backendStatus !== 'healthy'}
                     />
                 </label>
                 <p className="file-hint">Supported formats: .qasm (OpenQASM 2.0)</p>
@@ -114,6 +181,7 @@ export default function QASMUploader() {
                 <div className="loading-indicator">
                     <div className="spinner"></div>
                     <p>Processing quantum circuit...</p>
+                    <p>Using backend: {selectedBackend.replace(/_simulator$/, '').toUpperCase()}</p>
                 </div>
             )}
 
@@ -130,8 +198,15 @@ export default function QASMUploader() {
 
             {results && (
                 <div className="results-container">
+                    <div className="results-header">
+                        <h3>Circuit Results</h3>
+                        <div className="backend-used">
+                            Backend used: <strong>{results.backend_used.replace(/_simulator$/, '').toUpperCase()}</strong>
+                        </div>
+                    </div>
+                    
                     <div className="circuit-preview">
-                        <h3>Circuit Diagram</h3>
+                        <h4>Circuit Diagram</h4>
                         <img
                             src={`data:image/png;base64,${results.circuit_image}`}
                             alt="Quantum circuit diagram"
@@ -145,7 +220,7 @@ export default function QASMUploader() {
                     </div>
 
                     <div className="quantum-state-visualization">
-                        <h3>Qubit States</h3>
+                        <h4>Qubit States</h4>
                         <BlochSpheres
                             spheres={results.bloch_spheres}
                             numQubits={results.num_qubits}

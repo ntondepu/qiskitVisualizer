@@ -16,22 +16,26 @@ import os
 import tempfile
 import uuid
 from werkzeug.utils import secure_filename
+import traceback
 
 app = Flask(__name__)
+app.secret_key = 'your-secret-key-here'  # Change this in production
+
+# Configure CORS properly
 CORS(app, resources={
-    r"/api/*": {
+    r"/*": {
         "origins": ["http://localhost:5173"],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type"],
+        "supports_credentials": True,
+        "expose_headers": ["Content-Type"]
     }
 })
 
-# Enhanced session configuration
-app.secret_key = 'your-secret-key-here'  # Change this in production
+# Session configuration
 app.config.update(
-    SESSION_COOKIE_SAMESITE='None',
+    SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_SECURE=True,
-    SESSION_COOKIE_HTTPONLY=True,
     PERMANENT_SESSION_LIFETIME=86400
 )
 
@@ -42,9 +46,9 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     response.headers.add('Access-Control-Allow-Credentials', 'true')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     return response
 
 def allowed_file(filename):

@@ -12,40 +12,35 @@ export default function QASMUploader() {
 
     const checkBackendHealth = async () => {
         try {
-            const response = await fetch('http://localhost:5001/health', {
-                credentials: 'include',
-                headers: { 'Accept': 'application/json' }
-            });
+            const response = await fetch('http://localhost:5001/health');
             
             if (response.ok) {
                 const data = await response.json();
                 setAvailableBackends(data.backends || []);
                 
-                // Update selected backend if current selection is not available
                 if (data.backends && !data.backends.includes(selectedBackend)) {
                     setSelectedBackend(data.backends[0] || 'statevector_simulator');
                 }
                 
-                setBackendStatus('healthy');
+                setBackendStatus(data.status || 'healthy');
                 return true;
             } else {
+                const errorData = await response.json();
                 setBackendStatus('unhealthy');
+                setError(errorData.error || 'Backend error');
                 return false;
             }
         } catch (err) {
             console.error('Health check failed:', err);
             setBackendStatus('unreachable');
+            setError('Failed to connect to backend server');
             return false;
         }
     };
 
     useEffect(() => {
-        // Initial health check when component mounts
         checkBackendHealth();
-        
-        // Set up periodic health checks (every 30 seconds)
         const intervalId = setInterval(checkBackendHealth, 30000);
-        
         return () => clearInterval(intervalId);
     }, []);
 
@@ -59,46 +54,31 @@ export default function QASMUploader() {
         setFileName(file.name);
 
         try {
-            // Verify backend connection first
             const isHealthy = await checkBackendHealth();
             if (!isHealthy) {
                 throw new Error(`Backend server is ${backendStatus}. Please ensure it's running on port 5001.`);
             }
 
-            // Clear any existing circuit state
-            await fetch('http://localhost:5001/api/init-circuit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ num_qubits: 1 }) // Reset to minimal circuit
-            });
-
-            // Upload and process QASM file
             const formData = new FormData();
             formData.append('file', file);
 
             const response = await fetch('http://localhost:5001/api/upload-qasm', {
                 method: 'POST',
                 body: formData,
-                credentials: 'include',
                 headers: {
                     'Backend': selectedBackend
                 }
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `Server returned status ${response.status}`);
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Server error: ${response.status}`);
             }
 
             const data = await response.json();
 
             if (!data.success) {
                 throw new Error(data.error || 'Server processing failed');
-            }
-
-            if (!data.circuit_image) {
-                throw new Error('Server response incomplete: Missing circuit visualization');
             }
 
             setResults({
@@ -110,12 +90,7 @@ export default function QASMUploader() {
             });
         } catch (error) {
             console.error('Upload error:', error);
-            let errorMessage = error.message;
-
-            if (error.message.includes('Failed to fetch')) {
-                errorMessage = 'Connection failed. Please check:\n1. Backend is running\n2. Correct port (5001)\n3. CORS configuration\n4. Network connectivity';
-            }
-            setError(errorMessage);
+            setError(error.message);
         } finally {
             setIsLoading(false);
         }

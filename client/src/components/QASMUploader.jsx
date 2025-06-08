@@ -1,88 +1,51 @@
 import { useState } from 'react';
 import BlochSpheres from './BlochSpheres';
 
-function QASMUploader() {
-  const [file, setFile] = useState(null);
-  const [circuitImage, setCircuitImage] = useState('');
+export default function QASMUploader() {
   const [results, setResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [fileName, setFileName] = useState('');
 
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    setFile(selectedFile);
-    setFileName(selectedFile.name);
-  };
-
-  const handleUpload = async () => {
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
     if (!file) return;
-    
+
     setIsLoading(true);
-    setError('');
+    setError(null);
     setResults(null);
-    setCircuitImage('');
+    setFileName(file.name);
 
     try {
-      // First approach: Send as FormData
-      const formData = new FormData();
-      formData.append('file', file);
+      const qasmText = await file.text();
+      
+      // Client-side validation
+      if (!qasmText.trim().startsWith('OPENQASM')) {
+        throw new Error('This doesn\'t appear to be a valid QASM file. QASM files should start with "OPENQASM".');
+      }
 
       const response = await fetch('http://localhost:5001/api/upload-qasm', {
         method: 'POST',
-        body: formData,
-        credentials: 'include'
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ qasm: qasmText })
       });
 
       const data = await response.json();
       
-      if (!response.ok) throw new Error(data.error || 'Upload failed');
-      
-      // If we get circuit image directly
-      if (data.circuit_image) {
-        setCircuitImage(`data:image/png;base64,${data.circuit_image}`);
-      } 
-      // If we get full results
-      else if (data.success) {
-        setResults(data);
-        if (data.circuit_image) {
-          setCircuitImage(`data:image/png;base64,${data.circuit_image}`);
-        }
-      } else {
-        // Second approach: Try sending as text if first fails
-        const qasmText = await file.text();
-        
-        // Basic validation
-        if (!qasmText.trim().startsWith('OPENQASM')) {
-          throw new Error('Invalid QASM file format');
-        }
-
-        const textResponse = await fetch('http://localhost:5001/api/upload-qasm', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ qasm: qasmText })
-        });
-
-        if (!textResponse.ok) {
-          const errorData = await textResponse.json().catch(() => ({}));
-          throw new Error(errorData.error || `Server error: ${textResponse.status}`);
-        }
-
-        const textData = await textResponse.json();
-        if (!textData.success) {
-          throw new Error(textData.error || 'Unknown error occurred');
-        }
-
-        setResults(textData);
-        if (textData.circuit_image) {
-          setCircuitImage(`data:image/png;base64,${textData.circuit_image}`);
-        }
+      if (!response.ok) {
+        throw new Error(data.error || 'The server encountered an error processing your file');
       }
-    } catch (err) {
-      console.error('Upload error:', err);
-      setError(err.message || 'Failed to connect to server. Is the backend running?');
+
+      if (!data.circuit_image) {
+        throw new Error('The server didn\'t return a circuit visualization');
+      }
+
+      setResults(data);
+    } catch (error) {
+      console.error('Upload error:', error);
+      setError(error.message || 'An unknown error occurred during upload');
     } finally {
       setIsLoading(false);
     }
@@ -90,98 +53,90 @@ function QASMUploader() {
 
   return (
     <div className="qasm-uploader">
-      <h2>QASM File Upload</h2>
+      <h2>Quantum Circuit Upload</h2>
+      <p className="upload-instructions">
+        Upload any valid OpenQASM 2.0 file to visualize the quantum circuit and see simulation results.
+      </p>
       
-      <div className="upload-controls">
-        <label className="file-input-label">
-          <span>{fileName || 'Choose QASM file...'}</span>
+      <div className="upload-area">
+        <label className="file-upload-label">
           <input 
             type="file" 
-            accept=".qasm,.pdf" 
-            onChange={handleFileChange}
+            accept=".qasm" 
+            onChange={handleFileUpload}
             disabled={isLoading}
           />
+          <div className="file-upload-box">
+            {fileName ? (
+              <span className="file-name">{fileName}</span>
+            ) : (
+              <>
+                <span className="upload-icon">📁</span>
+                <span>Choose QASM file or drag here</span>
+              </>
+            )}
+          </div>
         </label>
-        <button 
-          onClick={handleUpload} 
-          disabled={!file || isLoading}
-          className="upload-button"
-        >
-          {isLoading ? 'Processing...' : 'Upload'}
-        </button>
       </div>
 
       {isLoading && (
-        <div className="loading-indicator">
+        <div className="loading-state">
           <div className="spinner"></div>
-          <p>Processing quantum circuit...</p>
+          <p>Analyzing quantum circuit...</p>
         </div>
       )}
 
       {error && (
-        <div className="error-message">
-          <h3>Error</h3>
+        <div className="error-state">
+          <h3>Oops!</h3>
           <p>{error}</p>
-          {error.includes('connect') && (
-            <p>Please ensure the backend server is running on port 5001.</p>
-          )}
+          <button 
+            className="try-again-button"
+            onClick={() => setError(null)}
+          >
+            Try Again
+          </button>
         </div>
       )}
 
-      {(circuitImage || results) && (
-        <div className="results-container">
-          <div className="circuit-preview">
-            <h3>Circuit Diagram</h3>
+      {results && (
+        <div className="results-view">
+          <div className="circuit-section">
+            <h3>Circuit Visualization</h3>
             <img 
-              src={circuitImage || `data:image/png;base64,${results?.circuit_image}`} 
-              alt="Quantum circuit diagram"
-              className="circuit-image"
-              onError={() => setError('Failed to display circuit')}
+              src={`data:image/png;base64,${results.circuit_image}`} 
+              alt="Generated quantum circuit"
+              onError={() => setError('Failed to display circuit diagram')}
             />
-            {results && (
-              <div className="circuit-stats">
-                <p><strong>Qubits:</strong> {results.num_qubits}</p>
-                <p><strong>Gates:</strong> {results.num_gates}</p>
-              </div>
-            )}
+            <div className="circuit-meta">
+              <p><strong>Qubits:</strong> {results.num_qubits}</p>
+              <p><strong>Operations:</strong> {results.num_gates}</p>
+            </div>
           </div>
 
-          {results && (
-            <div className="simulation-results">
-              {results.has_measurement ? (
-                <div className="measurement-results">
-                  <h3>Measurement Results</h3>
-                  <div className="counts-histogram">
-                    {results.counts && (
-                      <div className="histogram-bars">
-                        {Object.entries(results.counts).map(([state, count]) => (
-                          <div key={state} className="histogram-bar">
-                            <div 
-                              className="bar" 
-                              style={{ height: `${(count / 1024) * 100}%` }}
-                            ></div>
-                            <span className="state-label">{state}</span>
-                            <span className="count-label">{count}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+          <div className="simulation-section">
+            {results.has_measurement ? (
+              <>
+                <h3>Measurement Outcomes</h3>
+                <div className="probability-distribution">
+                  {Object.entries(results.counts || {}).map(([state, count]) => (
+                    <div key={state} className="state-probability">
+                      <div className="probability-bar" style={{ width: `${(count / 1024) * 100}%` }} />
+                      <span className="state-value">{state}</span>
+                      <span className="state-count">{count} shots</span>
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                <div className="state-visualization">
-                  <h3>Qubit States</h3>
-                  {results.bloch_vectors && (
-                    <BlochSpheres spheres={results.bloch_vectors} />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+              </>
+            ) : (
+              <>
+                <h3>Qubit States</h3>
+                <BlochSpheres spheres={results.bloch_vectors || []} />
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 }
-
-export default QASMUploader;

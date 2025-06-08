@@ -144,7 +144,24 @@ def upload_qasm():
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({'status': 'healthy'}), 200
+    try:
+        # Check if Aer backends are available
+        backends = Aer.backends()
+        if not backends:
+            return jsonify({
+                'status': 'unhealthy',
+                'error': 'No quantum backends available'
+            }), 500
+            
+        return jsonify({
+            'status': 'healthy',
+            'backends': [b.name() for b in backends]
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e)
+        }), 500
 
 @app.route('/api/init-circuit', methods=['POST'])
 def init_circuit():

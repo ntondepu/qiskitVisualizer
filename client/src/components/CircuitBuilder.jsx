@@ -27,6 +27,7 @@ export default function CircuitBuilder() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         credentials: 'include',
         body: JSON.stringify({ num_qubits: numQubits })
@@ -62,6 +63,7 @@ export default function CircuitBuilder() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         credentials: 'include',
         body: JSON.stringify({
@@ -107,6 +109,7 @@ export default function CircuitBuilder() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         credentials: 'include',
         body: JSON.stringify({ 

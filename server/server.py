@@ -92,6 +92,20 @@ def upload_qasm():
         
         # Clean up
         os.remove(filepath)
+
+        formatted_gates = []
+        for instruction in circuit.data:
+            gate = instruction.operation
+            qubits = [qubit.index for qubit in instruction.qubits]
+            clbits = [clbit.index for clbit in instruction.clbits] if hasattr(instruction, 'clbits') else []
+            
+            gate_info = {
+                'name': gate.name,
+                'qubits': qubits,
+                'clbits': clbits,
+                'params': gate.params
+            }
+            formatted_gates.append(gate_info)
         
         return _add_cors_headers(jsonify({
             'success': True,

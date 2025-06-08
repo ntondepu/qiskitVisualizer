@@ -17,11 +17,26 @@ import tempfile
 import uuid
 from werkzeug.utils import secure_filename
 
-app = Flask(__name__)
-CORS(app, supports_credentials=True)
+CORS(app,
+     supports_credentials=True,
+     resources={
+         r"/api/*": {
+             "origins": ["http://localhost:5173"],  # Explicitly specify your frontend origin
+             "methods": ["GET", "POST", "OPTIONS"],  # Must include OPTIONS for preflight
+             "allow_headers": ["Content-Type"],     # Required headers
+             "expose_headers": ["*"],               # Expose all headers to frontend
+             "max_age": 86400                       # Cache preflight response
+         }
+     })
+
+# Session configuration
 app.secret_key = 'your-secret-key-here'  # Change to a real secret key in production
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-app.config['SESSION_COOKIE_SECURE'] = True
+app.config.update(
+    SESSION_COOKIE_SAMESITE='None',     # Required for cross-site cookies
+    SESSION_COOKIE_SECURE=True,         # Required for SameSite=None
+    SESSION_COOKIE_HTTPONLY=True,       # Recommended for security
+    PERMANENT_SESSION_LIFETIME=86400    # Session expiration (24h)
+)
 
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'qasm', 'pdf'}

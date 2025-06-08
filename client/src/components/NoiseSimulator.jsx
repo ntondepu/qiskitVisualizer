@@ -54,13 +54,13 @@ export default function NoiseSimulator() {
         })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Simulation failed');
-      }
-
       const data = await response.json();
-      if (!data.success) {
+      
+      if (!response.ok || !data.success) {
+        // Handle specific error about CX gates
+        if (data.error && data.error.includes('cannot be applied to 2 qubit instruction')) {
+          throw new Error('The circuit contains multi-qubit gates. Please reduce the depolarizing error or use a simpler circuit.');
+        }
         throw new Error(data.error || 'Simulation failed');
       }
       

@@ -532,3 +532,225 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== QASM Uploader Specific Styles ===== */
+.qasm-uploader {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  margin-bottom: 2rem;
+}
+
+/* Backend Status Indicator */
+.backend-status {
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  background: #f8f9fa;
+}
+
+.backend-status span {
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+}
+
+.backend-status .healthy {
+  color: #27ae60;
+  background: #d5f5e3;
+}
+
+.backend-status .unhealthy {
+  color: #f39c12;
+  background: #fef5e7;
+}
+
+.backend-status .unreachable {
+  color: #e74c3c;
+  background: #fadbd8;
+}
+
+/* File Upload Controls */
+.upload-controls {
+  margin-bottom: 1.5rem;
+}
+
+.file-input-label {
+  display: inline-block;
+  padding: 12px 24px;
+  background: var(--primary);
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.3s;
+  font-weight: 500;
+  margin-right: 1rem;
+}
+
+.file-input-label:hover {
+  background: var(--primary-dark);
+}
+
+.file-input-label span {
+  display: inline-block;
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.file-hint {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 0.5rem;
+}
+
+/* Loading Indicator */
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  color: #666;
+}
+
+.loading-indicator .spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(70, 70, 70, 0.2);
+  border-top-color: var(--primary);
+  animation: spin 1s linear infinite;
+}
+
+/* Error Message Styling */
+.error-message {
+  background: #fadbd8;
+  border-left: 4px solid var(--danger);
+  padding: 1rem;
+  margin: 1.5rem 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.error-message h3 {
+  color: var(--danger);
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.error-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.error-actions button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+.error-actions button:last-child {
+  background: #f8f9fa;
+  color: var(--dark);
+}
+
+.error-actions button:last-child:hover {
+  background: #e9ecef;
+}
+
+/* Results Container */
+.results-container {
+  margin-top: 2rem;
+  border-top: 1px solid #eee;
+  padding-top: 1.5rem;
+}
+
+.circuit-preview {
+  margin-bottom: 2rem;
+}
+
+.circuit-image {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  margin-top: 1rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.circuit-stats {
+  display: flex;
+  gap: 2rem;
+  margin-top: 1rem;
+  font-size: 0.95rem;
+}
+
+.circuit-stats p {
+  margin: 0.5rem 0;
+}
+
+/* Gate List Styling */
+.gate-list {
+  margin-top: 2rem;
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 4px;
+}
+
+.gate-list h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.gate-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  columns: 2;
+  column-gap: 2rem;
+}
+
+.gate-list li {
+  padding: 0.25rem 0;
+  break-inside: avoid;
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.gate-index {
+  display: inline-block;
+  width: 2rem;
+  color: #666;
+}
+
+.gate-name {
+  color: var(--dark);
+}
+
+/* Quantum State Visualization */
+.quantum-state-visualization {
+  margin-top: 2rem;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .gate-list ul {
+    columns: 1;
+  }
+  
+  .circuit-stats {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .file-input-label {
+    display: block;
+    margin-bottom: 1rem;
+  }
+  
+  .file-hint {
+    margin-top: 0.5rem;
+  }
+}

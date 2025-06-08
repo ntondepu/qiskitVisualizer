@@ -687,6 +687,25 @@ option[value="4"] {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+.histogram-container {
+  margin-top: 15px;
+  border: 1px solid #ddd;
+  padding: 10px;
+  border-radius: 4px;
+  background: white;
+}
+
+.bar {
+  transition: all 0.3s ease;
+}
+
+.bar:hover {
+  fill: #2E7D32;
+}
+
+.x-axis text, .y-axis text {
+  font-size: 12px;
+}
 /* ===== Buttons & Forms ===== */
 button {
   background: var(--primary);

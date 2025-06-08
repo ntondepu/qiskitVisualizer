@@ -20,122 +20,126 @@ export default function CircuitBuilder() {
   };
 
   const initializeCircuit = async () => {
-  setIsLoading(true);
-  setError(null);
-  try {
-    const response = await fetch('http://localhost:5001/api/init-circuit', {  // Changed this line
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',  // Added for session cookies
-      body: JSON.stringify({ num_qubits: numQubits })
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to initialize circuit');
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('http://localhost:5001/api/init-circuit', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ num_qubits: numQubits })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to initialize circuit');
+      }
+      
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Unknown error');
+      }
+      
+      setGates([]);
+      setResults(null);
+      setBlochSpheres(data.bloch_spheres || []);
+      setCircuitImage('');
+    } catch (err) {
+      setError(err.message);
+      console.error('Error initializing circuit:', err);
+    } finally {
+      setIsLoading(false);
     }
-    
-    const data = await response.json();
-    if (!data.success) {
-      throw new Error(data.error || 'Unknown error');
-    }
-    
-    setGates([]);
-    setResults(null);
-    setBlochSpheres([]);
-    setCircuitImage('');
-  } catch (err) {
-    setError(err.message);
-    console.error('Error initializing circuit:', err);
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   const addGate = async () => {
-  setIsLoading(true);
-  setError(null);
-  try {
-    const response = await fetch('http://localhost:5001/api/add-gate', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',  // Crucial for session/cookies
-      body: JSON.stringify({
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('http://localhost:5001/api/add-gate', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          gate: selectedGate,
+          target: targetQubit,
+          control: ['cx', 'swap'].includes(selectedGate) ? controlQubit : null
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Operation failed');
+      }
+
+      setGates(data.gates || []);
+      setBlochSpheres(data.bloch_spheres || []);
+      setCircuitImage(data.circuit_image || '');
+      
+    } catch (err) {
+      setError(err.message);
+      console.error('Gate operation failed:', {
+        error: err,
         gate: selectedGate,
         target: targetQubit,
-        control: ['cx', 'swap'].includes(selectedGate) ? controlQubit : undefined
-      })
-    });
-
-    // Improved error handling
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        control: ['cx', 'swap'].includes(selectedGate) ? controlQubit : null
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    const data = await response.json();
-    
-    if (!data.success) {
-      throw new Error(data.error || 'Operation failed');
-    }
-
-    setGates(data.gates || []);
-    setBlochSpheres(data.bloch_spheres || []);
-    setCircuitImage(data.circuit_image || '');
-    
-  } catch (err) {
-    setError(err.message);
-    console.error('Gate operation failed:', {
-      error: err,
-      gate: selectedGate,
-      target: targetQubit,
-      control: ['cx', 'swap'].includes(selectedGate) ? controlQubit : null
-    });
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   const runSimulation = async () => {
-  setIsLoading(true);
-  setError(null);
-  try {
-    const response = await fetch('http://localhost:5001/api/run-simulation', {  // Added /api prefix
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',  // Required for sessions
-      body: JSON.stringify({ 
-        shots: 1024 
-      })
-    });
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('http://localhost:5001/api/run-simulation', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          shots: 1024 
+        })
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP error! Status: ${response.status}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! Status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Simulation failed');
+      }
+
+      setResults({
+        counts: data.counts,
+        histogram: data.histogram_image
+      });
+
+    } catch (err) {
+      setError(err.message);
+      console.error('Simulation error:', {
+        error: err,
+        request: { shots: 1024 }
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    const data = await response.json();
-    
-    if (!data.success) {
-      throw new Error(data.error || 'Simulation failed');
-    }
-
-    setResults({
-      counts: data.counts,
-      histogram: data.histogram_image
-    });
-
-  } catch (err) {
-    setError(err.message);
-    console.error('Simulation error:', {
-      error: err,
-      request: { shots: 1024 }
-    });
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   return (
     <div className="circuit-builder">
@@ -154,6 +158,9 @@ export default function CircuitBuilder() {
             max="10"
             disabled={isLoading}
           />
+          <button onClick={initializeCircuit} disabled={isLoading}>
+            {isLoading ? 'Initializing...' : 'Initialize Circuit'}
+          </button>
         </div>
 
         <div className="control-group">

@@ -19,7 +19,12 @@ export default function QASMUploader() {
     try {
       // First check if backend is reachable
       try {
-        const healthCheck = await fetch('http://localhost:5001/health');
+        const healthCheck = await fetch('http://localhost:5001/health', {
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+          }
+        });
         if (!healthCheck.ok) {
           throw new Error('Backend server is not responding');
         }
@@ -34,7 +39,10 @@ export default function QASMUploader() {
       const response = await fetch('http://localhost:5001/api/upload-qasm', {
         method: 'POST',
         body: formData,
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+        }
       });
 
       if (!response.ok) {
@@ -56,7 +64,6 @@ export default function QASMUploader() {
         ...data,
         num_qubits: data.num_qubits,
         num_gates: data.gates ? data.gates.length : 0,
-        // Add empty Bloch spheres if not provided by backend
         bloch_spheres: data.bloch_spheres || Array(data.num_qubits).fill(null)
       });
     } catch (error) {

@@ -40,6 +40,14 @@ UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'qasm', 'pdf'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    return response
+
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS

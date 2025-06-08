@@ -407,19 +407,113 @@ button.loading {
 }
 
 /* ===== Noise Simulator ===== */
+.noise-simulator {
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.noise-controls {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
 .noise-parameter {
-  margin-bottom: 1.5rem;
+  margin-bottom: 15px;
 }
 
 .noise-parameter label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
 }
 
 .noise-parameter input[type="range"] {
   width: 100%;
-  max-width: 300px;
+}
+
+.shots-control input {
+  width: 80px;
+  padding: 5px;
+  margin-left: 10px;
+}
+
+.simulate-btn {
+  background: #4a6baf;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  margin-top: 15px;
+}
+
+.simulate-btn:hover {
+  background: #3a5a9f;
+}
+
+.simulate-btn.loading {
+  background: #7a8bbb;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-message {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 4px;
+  margin-top: 15px;
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.noise-stats {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.fidelity-display {
+  display: flex;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.fidelity-bar {
+  height: 20px;
+  background: #4a6baf;
+  border-radius: 3px;
+  margin-right: 10px;
+}
+
+.fidelity-help {
+  font-size: 0.9em;
+  color: #666;
+  margin-top: 10px;
 }
 
 /* ===== Challenges ===== */

@@ -21,14 +21,11 @@ import traceback
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Change this in production
 
-# Configure CORS properly
+# Simplified CORS configuration
 CORS(app, resources={
-    r"/*": {
-        "origins": ["http://localhost:5173"],
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type"],
-        "supports_credentials": True,
-        "expose_headers": ["Content-Type"]
+    r"/api/*": {
+        "origins": "http://localhost:5173",
+        "supports_credentials": True
     }
 })
 
@@ -43,92 +40,58 @@ UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'qasm', 'pdf'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-@app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    return response
-
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def _build_cors_preflight_response():
-    response = jsonify({'success': True})
-    response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-    response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    return response
-
-def _add_cors_headers(response):
-    response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    return response
-
-@app.route('/api/upload-qasm', methods=['POST', 'OPTIONS'])
+@app.route('/api/upload-qasm', methods=['POST'])
 def upload_qasm():
-    if request.method == 'OPTIONS':
-        return _build_cors_preflight_response()
-    
     try:
-        # Check if file was uploaded
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file uploaded'}), 400
-            
+
         file = request.files['file']
-        
-        # Check if file was selected
+
         if file.filename == '':
             return jsonify({'success': False, 'error': 'No selected file'}), 400
-            
-        # Check file extension
+
         if not allowed_file(file.filename):
             return jsonify({'success': False, 'error': 'Invalid file type'}), 400
 
-        # Save the uploaded file temporarily
         temp_dir = tempfile.gettempdir()
         filename = f"qasm_{uuid.uuid4().hex}.qasm"
         filepath = os.path.join(temp_dir, filename)
         file.save(filepath)
-        
-        # Read and parse QASM file
+
         with open(filepath, 'r') as f:
             qasm_str = f.read()
-        
-        # Create quantum circuit from QASM
+
         circuit = QuantumCircuit.from_qasm_str(qasm_str)
-        
-        # Generate circuit diagram
+
         circuit_buf = io.BytesIO()
         circuit.draw('mpl').savefig(circuit_buf, format='png')
         circuit_buf.seek(0)
         circuit_image = base64.b64encode(circuit_buf.getvalue()).decode('utf-8')
-        
-        # Generate Bloch spheres for each qubit
+
         bloch_images = []
         simulator = Aer.get_backend('statevector_simulator')
-        result = simulator.run(circuit).result()
+        result = execute(circuit, simulator).result()
         statevector = result.get_statevector()
-        
+
         for qubit in range(circuit.num_qubits):
             buf = io.BytesIO()
             plot_bloch_multivector(statevector).savefig(buf, format='png')
             bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
             plt.close()
-        
-        # Clean up temporary file
+
         os.remove(filepath)
 
-        # Format gate information
         formatted_gates = []
         for instruction in circuit.data:
             gate = instruction.operation
             qubits = [qubit.index for qubit in instruction.qubits]
             clbits = [clbit.index for clbit in instruction.clbits] if hasattr(instruction, 'clbits') else []
-            
+
             gate_info = {
                 'name': gate.name,
                 'qubits': qubits,
@@ -136,123 +99,111 @@ def upload_qasm():
                 'params': gate.params
             }
             formatted_gates.append(gate_info)
-        
-        # Return successful response with CORS headers
+
         return jsonify({
             "success": True,
-            "circuit_image": "base64string...",
-            "num_qubits": 2,
-            "gates": ["H", "CX"],
-            "bloch_spheres": [null, null]
+            "circuit_image": circuit_image,
+            "num_qubits": circuit.num_qubits,
+            "gates": [str(gate) for gate in formatted_gates],
+            "bloch_spheres": bloch_images
         })
-        
+
     except Exception as e:
-        # Clean up in case of error
         if 'filepath' in locals() and os.path.exists(filepath):
             os.remove(filepath)
-            
-        # Return error response with CORS headers
-        return _add_cors_headers(jsonify({
-            'success': False, 
+        return jsonify({
+            'success': False,
             'error': str(e),
-            'traceback': traceback.format_exc()  # Only include in development
-        })), 500
+            'traceback': traceback.format_exc()
+        }), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'healthy'}), 200
 
-@app.route('/api/init-circuit', methods=['POST', 'OPTIONS'])
+@app.route('/api/init-circuit', methods=['POST'])
 def init_circuit():
-    if request.method == 'OPTIONS':
-        return _build_cors_preflight_response()
-    
     try:
         if not request.is_json:
-            return _add_cors_headers(jsonify({'success': False, 'error': 'Request must be JSON'})), 400
-            
+            return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
+
         num_qubits = int(request.json.get('num_qubits', 2))
+
         if num_qubits < 1 or num_qubits > 10:
-            return _add_cors_headers(jsonify({
-                'success': False, 
+            return jsonify({
+                'success': False,
                 'error': 'Number of qubits must be between 1 and 10'
-            })), 400
-            
+            }), 400
+
         circuit = QuantumCircuit(num_qubits)
         session['current_circuit'] = circuit.qasm()
-        
+
         bloch_images = []
         for _ in range(num_qubits):
             buf = io.BytesIO()
             plot_bloch_multivector([1, 0]).savefig(buf, format='png')
             bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
             plt.close()
-        
-        return _add_cors_headers(jsonify({
+
+        return jsonify({
             'success': True,
             'bloch_spheres': bloch_images,
             'num_qubits': num_qubits
-        }))
+        })
     except Exception as e:
-        return _add_cors_headers(jsonify({'success': False, 'error': str(e)})), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/circuit-status', methods=['GET', 'OPTIONS'])
+@app.route('/api/circuit-status', methods=['GET'])
 def circuit_status():
-    if request.method == 'OPTIONS':
-        return _build_cors_preflight_response()
-        
     try:
         if 'current_circuit' in session:
             circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
-            return _add_cors_headers(jsonify({
+            return jsonify({
                 'success': True,
                 'hasCircuit': True,
                 'numQubits': circuit.num_qubits,
                 'gateCount': len(circuit.data)
-            }))
-        return _add_cors_headers(jsonify({
+            })
+        return jsonify({
             'success': True,
             'hasCircuit': False,
             'numQubits': 0,
             'gateCount': 0
-        }))
+        })
     except Exception as e:
-        return _add_cors_headers(jsonify({
+        return jsonify({
             'success': False,
             'error': str(e)
-        })), 500
+        }), 500
 
-@app.route('/api/add-gate', methods=['POST', 'OPTIONS'])
+@app.route('/api/add-gate', methods=['POST'])
 def add_gate():
-    if request.method == 'OPTIONS':
-        return _build_cors_preflight_response()
-    
     try:
         if 'current_circuit' not in session:
-            return _add_cors_headers(jsonify({
-                'success': False, 
+            return jsonify({
+                'success': False,
                 'error': 'No circuit initialized'
-            })), 400
-            
+            }), 400
+
         data = request.json
         gate_type = data['gate']
         target = data['target']
         control = data.get('control')
-        
+
         circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
-        
+
         if target >= circuit.num_qubits:
-            return _add_cors_headers(jsonify({
+            return jsonify({
                 'success': False,
                 'error': f'Target qubit {target} out of range'
-            })), 400
-            
+            }), 400
+
         if control is not None and control >= circuit.num_qubits:
-            return _add_cors_headers(jsonify({
+            return jsonify({
                 'success': False,
                 'error': f'Control qubit {control} out of range'
-            })), 400
-        
+            }), 400
+
         if gate_type == 'h':
             circuit.h(target)
         elif gate_type == 'x':
@@ -263,120 +214,114 @@ def add_gate():
             circuit.z(target)
         elif gate_type == 'cx':
             if control is None:
-                return _add_cors_headers(jsonify({
+                return jsonify({
                     'success': False,
                     'error': 'Control qubit required for CX gate'
-                })), 400
+                }), 400
             circuit.cx(control, target)
         elif gate_type == 'swap':
             if control is None:
-                return _add_cors_headers(jsonify({
+                return jsonify({
                     'success': False,
                     'error': 'Control qubit required for SWAP gate'
-                })), 400
+                }), 400
             circuit.swap(control, target)
         else:
-            return _add_cors_headers(jsonify({
+            return jsonify({
                 'success': False,
                 'error': f'Unknown gate type: {gate_type}'
-            })), 400
-        
+            }), 400
+
         session['current_circuit'] = circuit.qasm()
-        
+
         buf = io.BytesIO()
         circuit.draw('mpl').savefig(buf, format='png')
         circuit_image = base64.b64encode(buf.getvalue()).decode('utf-8')
         plt.close()
-        
-        state = Aer.get_backend('statevector_simulator').run(circuit).result().get_statevector()
+
+        state = execute(circuit, Aer.get_backend('statevector_simulator')).result().get_statevector()
         bloch_images = []
         for i in range(circuit.num_qubits):
             buf = io.BytesIO()
             plot_bloch_multivector(state).savefig(buf, format='png')
             bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
             plt.close()
-        
-        return _add_cors_headers(jsonify({
+
+        return jsonify({
             'success': True,
             'gates': [str(op) for op in circuit.data],
             'circuit_image': circuit_image,
             'bloch_spheres': bloch_images
-        }))
+        })
     except Exception as e:
-        return _add_cors_headers(jsonify({'success': False, 'error': str(e)})), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/run-simulation', methods=['POST', 'OPTIONS'])
+@app.route('/api/run-simulation', methods=['POST'])
 def run_simulation():
-    if request.method == 'OPTIONS':
-        return _build_cors_preflight_response()
-    
     try:
         if 'current_circuit' not in session:
-            return _add_cors_headers(jsonify({
-                'success': False, 
+            return jsonify({
+                'success': False,
                 'error': 'No circuit loaded'
-            })), 400
+            }), 400
 
         shots = int(request.json.get('shots', 1024))
         if shots < 1 or shots > 10000:
-            return _add_cors_headers(jsonify({
+            return jsonify({
                 'success': False,
                 'error': 'Shots must be between 1 and 10000'
-            })), 400
+            }), 400
 
         circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
         measured_circuit = circuit.copy()
         measured_circuit.measure_all()
-        
+
         simulator = Aer.get_backend('qasm_simulator')
-        job = simulator.run(transpile(measured_circuit, simulator), shots=shots)
+        job = execute(transpile(measured_circuit, simulator), shots=shots)
         result = job.result()
         counts = result.get_counts()
-        
+
         buf = io.BytesIO()
         plot_histogram(counts).savefig(buf, format='png', bbox_inches='tight')
         histogram = base64.b64encode(buf.getvalue()).decode('utf-8')
         plt.close()
-        
-        return _add_cors_headers(jsonify({
+
+        return jsonify({
             'success': True,
             'counts': counts,
             'histogram_image': histogram
-        }))
+        })
     except Exception as e:
-        return _add_cors_headers(jsonify({'success': False, 'error': str(e)})), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/optimize', methods=['POST', 'OPTIONS'])
+@app.route('/api/optimize', methods=['POST'])
 def optimize_circuit():
-    if request.method == 'OPTIONS':
-        return _build_cors_preflight_response()
-    
     try:
         if 'current_circuit' not in session:
-            return _add_cors_headers(jsonify({
-                'success': False, 
+            return jsonify({
+                'success': False,
                 'error': 'No circuit to optimize'
-            })), 400
-            
+            }), 400
+
         circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
         level = int(request.json.get('level', 1))
         if level < 0 or level > 3:
-            return _add_cors_headers(jsonify({
+            return jsonify({
                 'success': False,
                 'error': 'Optimization level must be between 0 and 3'
-            })), 400
-        
+            }), 400
+
         optimized_circuit = transpile(circuit, optimization_level=level)
-        
+
         original_img = io.BytesIO()
         circuit.draw('mpl').savefig(original_img, format='png')
         original_img.seek(0)
-        
+
         optimized_img = io.BytesIO()
         optimized_circuit.draw('mpl').savefig(optimized_img, format='png')
         optimized_img.seek(0)
-        
-        return _add_cors_headers(jsonify({
+
+        return jsonify({
             'success': True,
             'original': {
                 'gate_count': len(circuit.data),
@@ -392,32 +337,29 @@ def optimize_circuit():
                     f"Reduced depth from {circuit.depth()} to {optimized_circuit.depth()}"
                 ]
             }
-        }))
+        })
     except Exception as e:
-        return _add_cors_headers(jsonify({'success': False, 'error': str(e)})), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/noise-simulation', methods=['POST', 'OPTIONS'])
+@app.route('/api/noise-simulation', methods=['POST'])
 def noise_simulation():
-    if request.method == 'OPTIONS':
-        return _build_cors_preflight_response()
-
     try:
         if 'current_circuit' not in session:
-            return _add_cors_headers(jsonify({
-                'success': False, 
+            return jsonify({
+                'success': False,
                 'error': 'No circuit loaded'
-            })), 400
+            }), 400
 
         data = request.json
         shots = int(data.get('shots', 1024))
         if shots < 1 or shots > 10000:
-            return _add_cors_headers(jsonify({
+            return jsonify({
                 'success': False,
                 'error': 'Shots must be between 1 and 10000'
-            })), 400
+            }), 400
 
         noise_params = data.get('noise', {})
-        
+
         depolarizing = min(max(float(noise_params.get('depolarizing', 0)), 0), 1.0)
         bit_flip = min(max(float(noise_params.get('bit_flip', 0)), 0), 1.0)
         phase_flip = min(max(float(noise_params.get('phase_flip', 0)), 0), 1.0)
@@ -446,12 +388,12 @@ def noise_simulation():
         )
         result = job.result()
         counts = result.get_counts()
-        
+
         buf = io.BytesIO()
         plot_histogram(counts).savefig(buf, format='png', bbox_inches='tight')
         histogram = base64.b64encode(buf.getvalue()).decode('utf-8')
         plt.close()
-        
+
         fidelity = None
         if any([depolarizing, bit_flip, phase_flip]):
             ideal_backend = Aer.get_backend('statevector_simulator')
@@ -459,7 +401,7 @@ def noise_simulation():
             noisy_state = execute(circuit, ideal_backend, noise_model=noise_model).result().get_statevector()
             fidelity = float(np.abs(np.dot(ideal_state.conj(), noisy_state))**2)
 
-        return _add_cors_headers(jsonify({
+        return jsonify({
             'success': True,
             'counts': counts,
             'histogram_image': histogram,
@@ -469,9 +411,9 @@ def noise_simulation():
                 'bit_flip': bit_flip,
                 'phase_flip': phase_flip
             }
-        }))
+        })
     except Exception as e:
-        return _add_cors_headers(jsonify({'success': False, 'error': str(e)})), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):

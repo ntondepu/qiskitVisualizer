@@ -66,31 +66,40 @@ def upload_qasm():
         return _build_cors_preflight_response()
     
     try:
+        # Check if file was uploaded
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file uploaded'}), 400
             
         file = request.files['file']
+        
+        # Check if file was selected
         if file.filename == '':
             return jsonify({'success': False, 'error': 'No selected file'}), 400
             
+        # Check file extension
         if not allowed_file(file.filename):
             return jsonify({'success': False, 'error': 'Invalid file type'}), 400
 
+        # Save the uploaded file temporarily
         temp_dir = tempfile.gettempdir()
         filename = f"qasm_{uuid.uuid4().hex}.qasm"
         filepath = os.path.join(temp_dir, filename)
         file.save(filepath)
         
+        # Read and parse QASM file
         with open(filepath, 'r') as f:
             qasm_str = f.read()
         
+        # Create quantum circuit from QASM
         circuit = QuantumCircuit.from_qasm_str(qasm_str)
         
+        # Generate circuit diagram
         circuit_buf = io.BytesIO()
         circuit.draw('mpl').savefig(circuit_buf, format='png')
         circuit_buf.seek(0)
         circuit_image = base64.b64encode(circuit_buf.getvalue()).decode('utf-8')
         
+        # Generate Bloch spheres for each qubit
         bloch_images = []
         simulator = Aer.get_backend('statevector_simulator')
         result = simulator.run(circuit).result()
@@ -102,8 +111,10 @@ def upload_qasm():
             bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
             plt.close()
         
+        # Clean up temporary file
         os.remove(filepath)
 
+        # Format gate information
         formatted_gates = []
         for instruction in circuit.data:
             gate = instruction.operation
@@ -118,20 +129,26 @@ def upload_qasm():
             }
             formatted_gates.append(gate_info)
         
+        # Return successful response with CORS headers
         return _add_cors_headers(jsonify({
             'success': True,
             'circuit_image': circuit_image,
             'bloch_spheres': bloch_images,
             'num_qubits': circuit.num_qubits,
-            'gates': [str(gate) for gate in circuit.data]
+            'gates': [str(gate) for gate in circuit.data],
+            'formatted_gates': formatted_gates
         }))
         
     except Exception as e:
+        # Clean up in case of error
         if 'filepath' in locals() and os.path.exists(filepath):
             os.remove(filepath)
+            
+        # Return error response with CORS headers
         return _add_cors_headers(jsonify({
             'success': False, 
-            'error': str(e)
+            'error': str(e),
+            'traceback': traceback.format_exc()  # Only include in development
         })), 500
 
 @app.route('/health', methods=['GET'])

@@ -22,21 +22,21 @@ CORS(app,
      supports_credentials=True,
      resources={
          r"/api/*": {
-             "origins": ["http://localhost:5173"],  # Explicitly specify your frontend origin
-             "methods": ["GET", "POST", "OPTIONS"],  # Must include OPTIONS for preflight
-             "allow_headers": ["Content-Type"],     # Required headers
-             "expose_headers": ["*"],               # Expose all headers to frontend
-             "max_age": 86400                       # Cache preflight response
+             "origins": ["http://localhost:5173"],
+             "methods": ["GET", "POST", "OPTIONS"],
+             "allow_headers": ["Content-Type"],
+             "expose_headers": ["*"],
+             "max_age": 86400
          }
      })
 
-# Session configuration
-app.secret_key = 'your-secret-key-here'  # Change to a real secret key in production
+# Enhanced session configuration
+app.secret_key = 'your-secret-key-here'  # Change this in production
 app.config.update(
-    SESSION_COOKIE_SAMESITE='None',     # Required for cross-site cookies
-    SESSION_COOKIE_SECURE=True,         # Required for SameSite=None
-    SESSION_COOKIE_HTTPONLY=True,       # Recommended for security
-    PERMANENT_SESSION_LIFETIME=86400    # Session expiration (24h)
+    SESSION_COOKIE_SAMESITE='None',
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    PERMANENT_SESSION_LIFETIME=86400
 )
 
 UPLOAD_FOLDER = 'uploads'
@@ -76,25 +76,21 @@ def upload_qasm():
         if not allowed_file(file.filename):
             return jsonify({'success': False, 'error': 'Invalid file type'}), 400
 
-        # Create temp file
         temp_dir = tempfile.gettempdir()
         filename = f"qasm_{uuid.uuid4().hex}.qasm"
         filepath = os.path.join(temp_dir, filename)
         file.save(filepath)
         
-        # Process QASM file
         with open(filepath, 'r') as f:
             qasm_str = f.read()
         
         circuit = QuantumCircuit.from_qasm_str(qasm_str)
         
-        # Generate circuit visualization
         circuit_buf = io.BytesIO()
         circuit.draw('mpl').savefig(circuit_buf, format='png')
         circuit_buf.seek(0)
         circuit_image = base64.b64encode(circuit_buf.getvalue()).decode('utf-8')
         
-        # Generate Bloch spheres for each qubit
         bloch_images = []
         simulator = Aer.get_backend('statevector_simulator')
         result = simulator.run(circuit).result()
@@ -106,7 +102,6 @@ def upload_qasm():
             bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
             plt.close()
         
-        # Clean up
         os.remove(filepath)
 
         formatted_gates = []
@@ -142,11 +137,6 @@ def upload_qasm():
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'healthy'}), 200
-
-if __name__ == '__main__':
-    if not os.path.exists(UPLOAD_FOLDER):
-        os.makedirs(UPLOAD_FOLDER)
-    app.run(port=5001, debug=True, host='0.0.0.0')
 
 @app.route('/api/init-circuit', methods=['POST', 'OPTIONS'])
 def init_circuit():
@@ -227,7 +217,6 @@ def add_gate():
         
         circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
         
-        # Validate qubit indices
         if target >= circuit.num_qubits:
             return _add_cors_headers(jsonify({
                 'success': False,
@@ -240,7 +229,6 @@ def add_gate():
                 'error': f'Control qubit {control} out of range'
             })), 400
         
-        # Apply the gate
         if gate_type == 'h':
             circuit.h(target)
         elif gate_type == 'x':
@@ -271,7 +259,6 @@ def add_gate():
         
         session['current_circuit'] = circuit.qasm()
         
-        # Generate visualizations
         buf = io.BytesIO()
         circuit.draw('mpl').savefig(buf, format='png')
         circuit_image = base64.b64encode(buf.getvalue()).decode('utf-8')
@@ -357,7 +344,6 @@ def optimize_circuit():
         
         optimized_circuit = transpile(circuit, optimization_level=level)
         
-        # Generate visualizations
         original_img = io.BytesIO()
         circuit.draw('mpl').savefig(original_img, format='png')
         original_img.seek(0)
@@ -408,7 +394,6 @@ def noise_simulation():
 
         noise_params = data.get('noise', {})
         
-        # Parameter validation
         depolarizing = min(max(float(noise_params.get('depolarizing', 0)), 0), 1.0)
         bit_flip = min(max(float(noise_params.get('bit_flip', 0)), 0), 1.0)
         phase_flip = min(max(float(noise_params.get('phase_flip', 0)), 0), 1.0)
@@ -428,7 +413,6 @@ def noise_simulation():
             error = pauli_error([('Z', phase_flip), ('I', 1-phase_flip)])
             noise_model.add_all_qubit_quantum_error(error, ['measure'])
 
-        # Run simulation
         simulator = Aer.get_backend('qasm_simulator')
         job = execute(
             transpile(measured_circuit, simulator),
@@ -439,13 +423,11 @@ def noise_simulation():
         result = job.result()
         counts = result.get_counts()
         
-        # Generate visualization
         buf = io.BytesIO()
         plot_histogram(counts).savefig(buf, format='png', bbox_inches='tight')
         histogram = base64.b64encode(buf.getvalue()).decode('utf-8')
         plt.close()
         
-        # Calculate fidelity
         fidelity = None
         if any([depolarizing, bit_flip, phase_flip]):
             ideal_backend = Aer.get_backend('statevector_simulator')
@@ -468,4 +450,6 @@ def noise_simulation():
         return _add_cors_headers(jsonify({'success': False, 'error': str(e)})), 500
 
 if __name__ == '__main__':
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
     app.run(port=5001, debug=True, host='0.0.0.0')

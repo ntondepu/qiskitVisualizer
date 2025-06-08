@@ -24,7 +24,7 @@ app.secret_key = 'your-secret-key-here'  # Change this in production
 # Simplified CORS configuration
 CORS(app, resources={
     r"/api/*": {
-        "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+        "origins": "*",
         "supports_credentials": True,
         "methods": ["GET", "POST", "OPTIONS"]
     },
@@ -88,24 +88,36 @@ def upload_qasm():
         backend = Aer.get_backend(backend_name)
 
         # Draw circuit first
-        circuit_buf = io.BytesIO()
-        circuit.draw('mpl').savefig(circuit_buf, format='png')
-        circuit_buf.seek(0)
-        circuit_image = base64.b64encode(circuit_buf.getvalue()).decode('utf-8')
+        try:
+            circuit_buf = io.BytesIO()
+            fig = circuit.draw('mpl')
+            plt.savefig(circuit_buf, format='png', bbox_inches='tight')
+            plt.close(fig)
+            circuit_buf.seek(0)
+            circuit_image = base64.b64encode(circuit_buf.getvalue()).decode('utf-8')
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Circuit drawing failed: {str(e)}'
+            }), 400
 
         # Execute based on backend type
         bloch_images = []
         if backend_name == 'statevector_simulator':
-            result = execute(circuit, backend).result()
-            statevector = result.get_statevector()
-            
-            for qubit in range(circuit.num_qubits):
+            try:
+                result = execute(circuit, backend).result()
+                statevector = result.get_statevector()
+                
                 buf = io.BytesIO()
-                plot_bloch_multivector(statevector).savefig(buf, format='png')
-                bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
-                plt.close()
+                fig = plot_bloch_multivector(statevector)
+                plt.savefig(buf, format='png', bbox_inches='tight')
+                plt.close(fig)
+                buf.seek(0)
+                bloch_image = base64.b64encode(buf.getvalue()).decode('utf-8')
+                bloch_images = [bloch_image] * circuit.num_qubits
+            except Exception as e:
+                bloch_images = [None] * circuit.num_qubits
         else:
-            # For other backends, just return empty Bloch spheres
             bloch_images = [None] * circuit.num_qubits
 
         os.remove(filepath)
@@ -180,12 +192,14 @@ def init_circuit():
         circuit = QuantumCircuit(num_qubits)
         session['current_circuit'] = circuit.qasm()
 
-        bloch_images = []
-        for _ in range(num_qubits):
-            buf = io.BytesIO()
-            plot_bloch_multivector([1, 0]).savefig(buf, format='png')
-            bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
-            plt.close()
+        # Create a single Bloch sphere image for all qubits in |0> state
+        buf = io.BytesIO()
+        fig = plot_bloch_multivector([1, 0])
+        plt.savefig(buf, format='png', bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        bloch_image = base64.b64encode(buf.getvalue()).decode('utf-8')
+        bloch_images = [bloch_image] * num_qubits
 
         return jsonify({
             'success': True,
@@ -276,18 +290,25 @@ def add_gate():
 
         session['current_circuit'] = circuit.qasm()
 
+        # Draw circuit
         buf = io.BytesIO()
-        circuit.draw('mpl').savefig(buf, format='png')
+        fig = circuit.draw('mpl')
+        plt.savefig(buf, format='png', bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
         circuit_image = base64.b64encode(buf.getvalue()).decode('utf-8')
-        plt.close()
 
-        state = execute(circuit, Aer.get_backend('statevector_simulator')).result().get_statevector()
-        bloch_images = []
-        for i in range(circuit.num_qubits):
-            buf = io.BytesIO()
-            plot_bloch_multivector(state).savefig(buf, format='png')
-            bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
-            plt.close()
+        # Get statevector and plot Bloch spheres
+        backend = Aer.get_backend('statevector_simulator')
+        state = execute(circuit, backend).result().get_statevector()
+        
+        buf = io.BytesIO()
+        fig = plot_bloch_multivector(state)
+        plt.savefig(buf, format='png', bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        bloch_image = base64.b64encode(buf.getvalue()).decode('utf-8')
+        bloch_images = [bloch_image] * circuit.num_qubits
 
         return jsonify({
             'success': True,
@@ -319,14 +340,16 @@ def run_simulation():
         measured_circuit.measure_all()
 
         simulator = Aer.get_backend('qasm_simulator')
-        job = execute(transpile(measured_circuit, simulator), shots=shots)
+        job = execute(measured_circuit, simulator, shots=shots)
         result = job.result()
         counts = result.get_counts()
 
         buf = io.BytesIO()
-        plot_histogram(counts).savefig(buf, format='png', bbox_inches='tight')
+        fig = plot_histogram(counts)
+        plt.savefig(buf, format='png', bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
         histogram = base64.b64encode(buf.getvalue()).decode('utf-8')
-        plt.close()
 
         return jsonify({
             'success': True,

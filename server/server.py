@@ -18,17 +18,14 @@ import uuid
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-CORS(app,
-     supports_credentials=True,
-     resources={
-         r"/api/*": {
-             "origins": ["http://localhost:5173"],
-             "methods": ["GET", "POST", "OPTIONS"],
-             "allow_headers": ["Content-Type"],
-             "expose_headers": ["*"],
-             "max_age": 86400
-         }
-     })
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:5173"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"],
+        "supports_credentials": True
+    }
+})
 
 # Enhanced session configuration
 app.secret_key = 'your-secret-key-here'  # Change this in production

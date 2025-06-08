@@ -10,46 +10,34 @@ export default function Challenges() {
   const [circuitImage, setCircuitImage] = useState('');
   const [showHint, setShowHint] = useState(false);
   const [completedChallenges, setCompletedChallenges] = useState([]);
+  const [challenges, setChallenges] = useState([]);
+  const [error, setError] = useState('');
 
-  const challenges = [
-    {
-      id: 1,
-      name: 'Create Bell State',
-      description: 'Construct a circuit that creates an entangled Bell state between qubits 0 and 1 (|00⟩ + |11⟩)/√2',
-      solution: 'H 0; CX 0 1',
-      difficulty: 'Beginner',
-      hint: 'Start by putting the first qubit in superposition, then entangle it with the second'
-    },
-    {
-      id: 2,
-      name: 'GHZ State',
-      description: 'Create a 3-qubit GHZ state (|000⟩ + |111⟩)/√2',
-      solution: 'H 0; CX 0 1; CX 0 2',
-      difficulty: 'Intermediate',
-      hint: 'Extend the Bell state concept to three qubits'
-    },
-    {
-      id: 3,
-      name: 'Superposition',
-      description: 'Put a single qubit in superposition state (|0⟩ + |1⟩)/√2',
-      solution: 'H 0',
-      difficulty: 'Beginner',
-      hint: 'You only need one gate for this challenge'
-    },
-    {
-      id: 4,
-      name: 'Entangled State',
-      description: 'Create an entangled state where |01⟩ and |10⟩ are equally likely',
-      solution: 'H 0; CX 0 1; X 1',
-      difficulty: 'Advanced',
-      hint: 'Create entanglement then flip one qubit'
-    }
-  ];
+  useEffect(() => {
+    const fetchChallenges = async () => {
+      try {
+        const response = await fetch('/api/challenges');
+        const data = await response.json();
+        if (data.success) {
+          setChallenges(data.challenges);
+        } else {
+          setError('Failed to load challenges');
+        }
+      } catch (err) {
+        setError('Network error loading challenges');
+      }
+    };
+    fetchChallenges();
+  }, []);
 
   const submitSolution = async () => {
-    if (!userSolution.trim()) return;
+    if (!userSolution.trim()) {
+      setError('Please enter a solution');
+      return;
+    }
     
     setIsLoading(true);
+    setError('');
     try {
       const response = await fetch('/api/verify-challenge', {
         method: 'POST',
@@ -61,20 +49,19 @@ export default function Challenges() {
       });
       const data = await response.json();
       
-      if (data.success && data.correct) {
+      if (!data.success) {
+        setError(data.error || 'Verification failed');
+      }
+
+      if (data.correct) {
         setCompletedChallenges(prev => [...new Set([...prev, currentChallenge])]);
       }
       
       setResults(data);
-      if (data.circuit_image) {
-        setCircuitImage(data.circuit_image);
-      }
+      setCircuitImage(data.circuit_image || '');
     } catch (error) {
+      setError('Failed to connect to server');
       console.error('Submission failed:', error);
-      setResults({
-        success: false,
-        error: 'Failed to verify solution'
-      });
     } finally {
       setIsLoading(false);
     }
@@ -87,6 +74,8 @@ export default function Challenges() {
       <h2>Quantum Challenges</h2>
       <p className="subtitle">Test your quantum computing skills by solving these challenges</p>
       
+      {error && <div className="error-message">{error}</div>}
+
       <div className="challenge-selector">
         <select 
           value={currentChallenge || ''}
@@ -94,8 +83,9 @@ export default function Challenges() {
             setCurrentChallenge(e.target.value);
             setResults(null);
             setUserSolution('');
+            setError('');
           }}
-          disabled={isLoading}
+          disabled={isLoading || challenges.length === 0}
         >
           <option value="">Select a challenge</option>
           {challenges.map(challenge => (
@@ -121,6 +111,7 @@ export default function Challenges() {
             <button 
               className="hint-button"
               onClick={() => setShowHint(!showHint)}
+              disabled={isLoading}
             >
               {showHint ? 'Hide Hint' : 'Show Hint'}
             </button>
@@ -138,7 +129,7 @@ export default function Challenges() {
               <textarea
                 value={userSolution}
                 onChange={(e) => setUserSolution(e.target.value)}
-                placeholder="Enter gates separated by semicolons (e.g., 'H 0; CX 0 1')"
+                placeholder={`Enter gates separated by semicolons (e.g., "${currentChallengeData.solution}")`}
                 disabled={isLoading}
                 rows={4}
               />
@@ -149,16 +140,16 @@ export default function Challenges() {
                   disabled={isLoading || !userSolution.trim()}
                   className="submit-button"
                 >
-                  {isLoading ? (
-                    <span className="loading-spinner"></span>
-                  ) : (
-                    'Submit Solution'
-                  )}
+                  {isLoading ? 'Verifying...' : 'Submit Solution'}
                 </button>
                 
                 <button
-                  onClick={() => setUserSolution(currentChallengeData.solution)}
+                  onClick={() => {
+                    setUserSolution(currentChallengeData.solution);
+                    setError('');
+                  }}
                   className="show-solution-button"
+                  disabled={isLoading}
                 >
                   Show Solution
                 </button>
@@ -169,21 +160,18 @@ export default function Challenges() {
               <div className={`results-container ${results.correct ? 'success' : 'failure'}`}>
                 <h3>Results</h3>
                 
-                {results.error && (
-                  <div className="error-message">{results.error}</div>
-                )}
-
                 {circuitImage && (
                   <div className="circuit-visualization">
                     <h4>Your Circuit:</h4>
                     <img 
                       src={`data:image/png;base64,${circuitImage}`} 
-                      alt="Your circuit" 
+                      alt="Quantum circuit diagram"
+                      onError={() => setError('Failed to load circuit image')}
                     />
                   </div>
                 )}
 
-                {results.bloch_spheres && (
+                {results.bloch_spheres?.length > 0 && (
                   <div className="bloch-spheres">
                     <h4>Qubit States:</h4>
                     <BlochSpheres spheres={results.bloch_spheres} />
@@ -197,19 +185,17 @@ export default function Challenges() {
                   </div>
                 )}
 
-                {results.success && (
-                  <div className="verification-result">
-                    {results.correct ? (
-                      <div className="success-message">
-                        ✅ Challenge completed successfully!
-                      </div>
-                    ) : (
-                      <div className="failure-message">
-                        ❌ Not quite right! {results.hint}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div className="verification-result">
+                  {results.correct ? (
+                    <div className="success-message">
+                      ✅ Challenge completed successfully!
+                    </div>
+                  ) : (
+                    <div className="failure-message">
+                      ❌ Not quite right! {results.hint || 'Try again.'}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

@@ -14,15 +14,15 @@ import json
 import os
 from werkzeug.utils import secure_filename
 
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'qasm', 'pdf'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 app.secret_key = 'your-secret-key-here'  # Change to a real secret key in production
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
+
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'qasm', 'pdf'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 def allowed_file(filename):
     return '.' in filename and \

@@ -24,8 +24,13 @@ app.secret_key = 'your-secret-key-here'  # Change this in production
 # Simplified CORS configuration
 CORS(app, resources={
     r"/api/*": {
-        "origins": "http://localhost:5173",
-        "supports_credentials": True
+        "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+        "supports_credentials": True,
+        "methods": ["GET", "POST", "OPTIONS"]
+    },
+    r"/health": {
+        "origins": "*",
+        "methods": ["GET"]
     }
 })
 

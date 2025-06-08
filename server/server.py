@@ -17,6 +17,7 @@ import tempfile
 import uuid
 from werkzeug.utils import secure_filename
 
+app = Flask(__name__)
 CORS(app,
      supports_credentials=True,
      resources={

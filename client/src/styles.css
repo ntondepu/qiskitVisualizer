@@ -538,7 +538,155 @@ button.loading {
   font-family: monospace;
   resize: vertical;
 }
+/* Challenges component styles */
+.challenges-container {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
 
+.challenge-selector select {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  margin-bottom: 20px;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+}
+
+.challenge-selector option.completed {
+  background-color: #e6ffe6;
+}
+
+.challenge-workspace {
+  display: flex;
+  gap: 30px;
+}
+
+.challenge-description {
+  flex: 1;
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.solution-section {
+  flex: 2;
+}
+
+.solution-input textarea {
+  width: 100%;
+  padding: 10px;
+  font-family: monospace;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.submit-button, .hint-button, .show-solution-button {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.submit-button {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.submit-button:disabled {
+  background-color: #cccccc;
+}
+
+.hint-button {
+  background-color: #2196F3;
+  color: white;
+}
+
+.show-solution-button {
+  background-color: #ff9800;
+  color: white;
+}
+
+.hint-box {
+  background-color: #fff3cd;
+  padding: 10px;
+  border-radius: 4px;
+  margin-top: 10px;
+}
+
+.results-container {
+  margin-top: 20px;
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.results-container.success {
+  background-color: #e8f5e9;
+  border: 1px solid #a5d6a7;
+}
+
+.results-container.failure {
+  background-color: #ffebee;
+  border: 1px solid #ef9a9a;
+}
+
+.circuit-visualization img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #ddd;
+}
+
+.difficulty-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  margin-left: 10px;
+}
+
+.difficulty-badge {
+  background-color: #ff9800;
+  color: white;
+}
+
+/* For beginner challenges */
+option[value="1"], option[value="3"] {
+  background-color: #e8f5e9;
+}
+
+/* For intermediate challenges */
+option[value="2"] {
+  background-color: #fff3e0;
+}
+
+/* For advanced challenges */
+option[value="4"] {
+  background-color: #ffebee;
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 3px solid rgba(255,255,255,.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 /* ===== Buttons & Forms ===== */
 button {
   background: var(--primary);

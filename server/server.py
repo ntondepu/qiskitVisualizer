@@ -11,12 +11,22 @@ import base64
 import io
 import numpy as np
 import json
+import os
+from werkzeug.utils import secure_filename
+
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'qasm', 'pdf'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 app.secret_key = 'your-secret-key-here'  # Change to a real secret key in production
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def _build_cors_preflight_response():
     response = jsonify({'success': True})
@@ -31,28 +41,50 @@ def _add_cors_headers(response):
     response.headers.add('Access-Control-Allow-Credentials', 'true')
     return response
 
-@app.route('/api/upload-qasm', methods=['POST', 'OPTIONS'])
+@app.route('/api/upload-qasm', methods=['POST'])
 def upload_qasm():
-    if request.method == 'OPTIONS':
-        return _build_cors_preflight_response()
-    
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file uploaded'}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'No selected file'}), 400
+        
+    if not allowed_file(file.filename):
+        return jsonify({'success': False, 'error': 'Invalid file type'}), 400
+
     try:
-        if not request.is_json:
-            return _add_cors_headers(jsonify({'success': False, 'error': 'Request must be JSON'})), 400
-            
-        qasm_str = request.json.get('qasm')
-        if not qasm_str:
-            return _add_cors_headers(jsonify({'success': False, 'error': 'No QASM provided'})), 400
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        # Process QASM file
+        with open(filepath, 'r') as f:
+            qasm_str = f.read()
         
         circuit = QuantumCircuit.from_qasm_str(qasm_str)
-        session['current_circuit'] = qasm_str
-        return _add_cors_headers(jsonify({
+        
+        # Generate visualization
+        buf = io.BytesIO()
+        circuit.draw('mpl').savefig(buf, format='png')
+        buf.seek(0)
+        image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+        
+        # Clean up
+        os.remove(filepath)
+        
+        return jsonify({
             'success': True,
-            'message': 'QASM loaded successfully',
-            'num_qubits': circuit.num_qubits
-        }))
+            'circuit_image': image_base64,
+            'num_qubits': circuit.num_qubits,
+            'gates': [str(gate) for gate in circuit.data]
+        })
+        
     except Exception as e:
-        return _add_cors_headers(jsonify({'success': False, 'error': str(e)})), 500
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/init-circuit', methods=['POST', 'OPTIONS'])
 def init_circuit():

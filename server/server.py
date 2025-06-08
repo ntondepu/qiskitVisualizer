@@ -129,6 +129,9 @@ def health_check():
 @app.route('/api/init-circuit', methods=['POST'])
 def init_circuit():
     try:
+        if 'current_circuit' in session:
+            session.pop('current_circuit')
+            
         if not request.is_json:
             return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
 

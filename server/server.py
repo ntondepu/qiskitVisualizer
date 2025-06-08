@@ -41,6 +41,8 @@ def _add_cors_headers(response):
     response.headers.add('Access-Control-Allow-Credentials', 'true')
     return response
 
+MAX_FILE_SIZE = 1 * 1024 * 1024  # 1MB
+
 @app.route('/api/upload-qasm', methods=['POST'])
 def upload_qasm():
     if 'file' not in request.files:
@@ -53,26 +55,35 @@ def upload_qasm():
     if not allowed_file(file.filename):
         return jsonify({'success': False, 'error': 'Invalid file type'}), 400
 
+    if request.method == 'OPTIONS':
+        return _build_cors_preflight_response()
+    
+    # Generate unique temp filename
+    temp_dir = tempfile.gettempdir()
+    filename = f"qasm_{uuid.uuid4().hex}.qasm"
+    filepath = os.path.join(temp_dir, filename)
+    
     try:
         # Save file temporarily
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        # Process QASM file
+        # Read and validate content
         with open(filepath, 'r') as f:
             qasm_str = f.read()
+            
+        if not qasm_str.strip():
+            raise ValueError("Empty QASM file")
         
+        # Process QASM file
         circuit = QuantumCircuit.from_qasm_str(qasm_str)
+        if circuit.num_qubits == 0:
+            raise ValueError("Circuit has no qubits")
         
         # Generate visualization
         buf = io.BytesIO()
         circuit.draw('mpl').savefig(buf, format='png')
         buf.seek(0)
         image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-        
-        # Clean up
-        os.remove(filepath)
         
         return jsonify({
             'success': True,
@@ -82,9 +93,13 @@ def upload_qasm():
         })
         
     except Exception as e:
+        return jsonify({
+            'success': False, 
+            'error': f"Processing failed: {str(e)}"
+        }), 400
+    finally:
         if os.path.exists(filepath):
             os.remove(filepath)
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/init-circuit', methods=['POST', 'OPTIONS'])
 def init_circuit():

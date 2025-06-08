@@ -52,6 +52,9 @@ def allowed_file(filename):
 @app.route('/api/upload-qasm', methods=['POST'])
 def upload_qasm():
     try:
+        if 'current_circuit' in session:
+            session.pop('current_circuit')
+            
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file uploaded'}), 400
 
@@ -129,9 +132,6 @@ def health_check():
 @app.route('/api/init-circuit', methods=['POST'])
 def init_circuit():
     try:
-        if 'current_circuit' in session:
-            session.pop('current_circuit')
-            
         if not request.is_json:
             return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
 

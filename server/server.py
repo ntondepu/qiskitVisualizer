@@ -486,6 +486,113 @@ def noise_simulation():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/verify-challenge', methods=['POST'])
+def verify_challenge():
+    try:
+        data = request.json
+        challenge_id = data.get('challenge_id')
+        solution = data.get('solution')
+        
+        # Define challenges (same as frontend)
+        challenges = {
+            1: {
+                'name': 'Create Bell State',
+                'solution': 'H 0; CX 0 1',
+                'num_qubits': 2
+            },
+            2: {
+                'name': 'GHZ State',
+                'solution': 'H 0; CX 0 1; CX 0 2',
+                'num_qubits': 3
+            },
+            3: {
+                'name': 'Superposition',
+                'solution': 'H 0',
+                'num_qubits': 1
+            },
+            4: {
+                'name': 'Entangled State',
+                'solution': 'H 0; CX 0 1; X 1',
+                'num_qubits': 2
+            }
+        }
+
+        if challenge_id not in challenges:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid challenge ID'
+            }), 400
+
+        # Create circuit from user's solution
+        try:
+            circuit = QuantumCircuit(challenges[challenge_id]['num_qubits'])
+            for gate in solution.split(';'):
+                gate = gate.strip()
+                if not gate:
+                    continue
+                parts = gate.split()
+                if parts[0].upper() == 'H':
+                    circuit.h(int(parts[1]))
+                elif parts[0].upper() == 'X':
+                    circuit.x(int(parts[1]))
+                elif parts[0].upper() == 'CX':
+                    circuit.cx(int(parts[1]), int(parts[2]))
+                elif parts[0].upper() == 'Y':
+                    circuit.y(int(parts[1]))
+                elif parts[0].upper() == 'Z':
+                    circuit.z(int(parts[1]))
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid gate operation: {str(e)}',
+                'hint': 'Use format like "H 0; CX 0 1"'
+            }), 400
+
+        # Generate circuit image
+        buf = io.BytesIO()
+        fig = circuit.draw('mpl')
+        plt.savefig(buf, format='png', bbox_inches='tight')
+        plt.close(fig)
+        circuit_image = base64.b64encode(buf.getvalue()).decode('utf-8')
+
+        # Get statevector and Bloch spheres
+        backend = Aer.get_backend('statevector_simulator')
+        state = execute(circuit, backend).result().get_statevector()
+        
+        buf = io.BytesIO()
+        fig = plot_bloch_multivector(state)
+        plt.savefig(buf, format='png', bbox_inches='tight')
+        plt.close(fig)
+        bloch_image = base64.b64encode(buf.getvalue()).decode('utf-8')
+        bloch_images = [bloch_image] * circuit.num_qubits
+
+        # Get measurement counts
+        measured_circuit = circuit.copy()
+        measured_circuit.measure_all()
+        simulator = Aer.get_backend('qasm_simulator')
+        counts = execute(measured_circuit, simulator, shots=1000).result().get_counts()
+
+        # Verify solution
+        expected_solution = challenges[challenge_id]['solution']
+        is_correct = (solution.replace(' ', '').upper() == 
+                     expected_solution.replace(' ', '').upper())
+
+        return jsonify({
+            'success': True,
+            'correct': is_correct,
+            'counts': counts,
+            'circuit_image': circuit_image,
+            'bloch_spheres': bloch_images,
+            'hint': is_correct or f'Try using gates like: {expected_solution}'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
 if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)

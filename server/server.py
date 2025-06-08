@@ -34,6 +34,45 @@ CORS(app, resources={
     }
 })
 
+CHALLENGES = [
+    {
+        'id': 1,
+        'name': 'Create Bell State',
+        'description': 'Construct a circuit that creates an entangled Bell state between qubits 0 and 1 (|00⟩ + |11⟩)/√2',
+        'solution': 'H 0; CX 0 1',
+        'difficulty': 'Beginner',
+        'hint': 'Start by putting the first qubit in superposition, then entangle it with the second',
+        'num_qubits': 2
+    },
+    {
+        'id': 2,
+        'name': 'GHZ State',
+        'description': 'Create a 3-qubit GHZ state (|000⟩ + |111⟩)/√2',
+        'solution': 'H 0; CX 0 1; CX 0 2',
+        'difficulty': 'Intermediate',
+        'hint': 'Extend the Bell state concept to three qubits',
+        'num_qubits': 3
+    },
+    {
+        'id': 3,
+        'name': 'Superposition',
+        'description': 'Put a single qubit in superposition state (|0⟩ + |1⟩)/√2',
+        'solution': 'H 0',
+        'difficulty': 'Beginner',
+        'hint': 'You only need one gate for this challenge',
+        'num_qubits': 1
+    },
+    {
+        'id': 4,
+        'name': 'Entangled State',
+        'description': 'Create an entangled state where |01⟩ and |10⟩ are equally likely',
+        'solution': 'H 0; CX 0 1; X 1',
+        'difficulty': 'Advanced',
+        'hint': 'Create entanglement then flip one qubit',
+        'num_qubits': 2
+    }
+]
+
 # Session configuration
 app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
@@ -486,111 +525,145 @@ def noise_simulation():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/challenges', methods=['GET'])
+def get_challenges():
+    return jsonify({
+        'success': True,
+        'challenges': CHALLENGES
+    })
+
 @app.route('/api/verify-challenge', methods=['POST'])
 def verify_challenge():
     try:
-        data = request.json
-        challenge_id = data.get('challenge_id')
-        solution = data.get('solution')
-        
-        # Define challenges (same as frontend)
-        challenges = {
-            1: {
-                'name': 'Create Bell State',
-                'solution': 'H 0; CX 0 1',
-                'num_qubits': 2
-            },
-            2: {
-                'name': 'GHZ State',
-                'solution': 'H 0; CX 0 1; CX 0 2',
-                'num_qubits': 3
-            },
-            3: {
-                'name': 'Superposition',
-                'solution': 'H 0',
-                'num_qubits': 1
-            },
-            4: {
-                'name': 'Entangled State',
-                'solution': 'H 0; CX 0 1; X 1',
-                'num_qubits': 2
-            }
-        }
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No data provided'
+            }), 400
 
-        if challenge_id not in challenges:
+        challenge_id = data.get('challenge_id')
+        solution = data.get('solution', '').strip()
+        
+        if not challenge_id or not solution:
+            return jsonify({
+                'success': False,
+                'error': 'Missing challenge_id or solution'
+            }), 400
+
+        challenge = next((c for c in CHALLENGES if c['id'] == challenge_id), None)
+        if not challenge:
             return jsonify({
                 'success': False,
                 'error': 'Invalid challenge ID'
-            }), 400
+            }), 404
 
-        # Create circuit from user's solution
+        # Parse and build user's circuit
         try:
-            circuit = QuantumCircuit(challenges[challenge_id]['num_qubits'])
-            for gate in solution.split(';'):
-                gate = gate.strip()
-                if not gate:
-                    continue
+            user_circuit = QuantumCircuit(challenge['num_qubits'])
+            gates = [g.strip() for g in solution.split(';') if g.strip()]
+            
+            for gate in gates:
                 parts = gate.split()
-                if parts[0].upper() == 'H':
-                    circuit.h(int(parts[1]))
-                elif parts[0].upper() == 'X':
-                    circuit.x(int(parts[1]))
-                elif parts[0].upper() == 'CX':
-                    circuit.cx(int(parts[1]), int(parts[2]))
-                elif parts[0].upper() == 'Y':
-                    circuit.y(int(parts[1]))
-                elif parts[0].upper() == 'Z':
-                    circuit.z(int(parts[1]))
+                if len(parts) < 2:
+                    raise ValueError(f"Invalid gate format: {gate}")
+                
+                gate_name = parts[0].upper()
+                qubits = list(map(int, parts[1:]))
+                
+                if gate_name == 'H':
+                    user_circuit.h(qubits[0])
+                elif gate_name == 'X':
+                    user_circuit.x(qubits[0])
+                elif gate_name == 'Y':
+                    user_circuit.y(qubits[0])
+                elif gate_name == 'Z':
+                    user_circuit.z(qubits[0])
+                elif gate_name == 'CX' and len(qubits) >= 2:
+                    user_circuit.cx(qubits[0], qubits[1])
+                elif gate_name == 'SWAP' and len(qubits) >= 2:
+                    user_circuit.swap(qubits[0], qubits[1])
+                else:
+                    raise ValueError(f"Unsupported gate: {gate_name}")
         except Exception as e:
             return jsonify({
                 'success': False,
-                'error': f'Invalid gate operation: {str(e)}',
+                'error': f'Invalid circuit: {str(e)}',
                 'hint': 'Use format like "H 0; CX 0 1"'
             }), 400
 
         # Generate circuit image
-        buf = io.BytesIO()
-        fig = circuit.draw('mpl')
-        plt.savefig(buf, format='png', bbox_inches='tight')
-        plt.close(fig)
-        circuit_image = base64.b64encode(buf.getvalue()).decode('utf-8')
+        try:
+            buf = io.BytesIO()
+            fig = user_circuit.draw('mpl')
+            plt.savefig(buf, format='png', bbox_inches='tight')
+            plt.close(fig)
+            circuit_image = base64.b64encode(buf.getvalue()).decode('utf-8')
+        except Exception as e:
+            circuit_image = None
 
-        # Get statevector and Bloch spheres
+        # Build reference circuit
+        ref_circuit = QuantumCircuit(challenge['num_qubits'])
+        for gate in challenge['solution'].split(';'):
+            gate = gate.strip()
+            if not gate:
+                continue
+            parts = gate.split()
+            gate_name = parts[0].upper()
+            qubits = list(map(int, parts[1:]))
+            
+            if gate_name == 'H':
+                ref_circuit.h(qubits[0])
+            elif gate_name == 'X':
+                ref_circuit.x(qubits[0])
+            elif gate_name == 'CX':
+                ref_circuit.cx(qubits[0], qubits[1])
+
+        # Compare states
         backend = Aer.get_backend('statevector_simulator')
-        state = execute(circuit, backend).result().get_statevector()
+        user_state = execute(user_circuit, backend).result().get_statevector()
+        ref_state = execute(ref_circuit, backend).result().get_statevector()
         
-        buf = io.BytesIO()
-        fig = plot_bloch_multivector(state)
-        plt.savefig(buf, format='png', bbox_inches='tight')
-        plt.close(fig)
-        bloch_image = base64.b64encode(buf.getvalue()).decode('utf-8')
-        bloch_images = [bloch_image] * circuit.num_qubits
+        # Calculate state fidelity
+        fidelity = np.abs(np.dot(user_state.conj(), ref_state))**2
+        is_correct = np.isclose(fidelity, 1.0, atol=1e-5)
+
+        # Generate Bloch spheres
+        bloch_images = []
+        for qubit in range(challenge['num_qubits']):
+            try:
+                traced_state = partial_trace(user_state, 
+                                          [i for i in range(challenge['num_qubits']) if i != qubit])
+                buf = io.BytesIO()
+                fig = plot_bloch_multivector(traced_state)
+                plt.savefig(buf, format='png', bbox_inches='tight')
+                plt.close(fig)
+                bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+            except Exception:
+                bloch_images.append(None)
 
         # Get measurement counts
-        measured_circuit = circuit.copy()
+        measured_circuit = user_circuit.copy()
         measured_circuit.measure_all()
-        simulator = Aer.get_backend('qasm_simulator')
-        counts = execute(measured_circuit, simulator, shots=1000).result().get_counts()
-
-        # Verify solution
-        expected_solution = challenges[challenge_id]['solution']
-        is_correct = (solution.replace(' ', '').upper() == 
-                     expected_solution.replace(' ', '').upper())
+        counts = execute(measured_circuit, 
+                        Aer.get_backend('qasm_simulator'), 
+                        shots=1000).result().get_counts()
 
         return jsonify({
             'success': True,
-            'correct': is_correct,
+            'correct': bool(is_correct),
+            'fidelity': float(fidelity),
             'counts': counts,
             'circuit_image': circuit_image,
             'bloch_spheres': bloch_images,
-            'hint': is_correct or f'Try using gates like: {expected_solution}'
+            'hint': challenge['hint'] if not is_correct else ''
         })
 
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': str(e),
-            'traceback': traceback.format_exc()
+            'error': 'Server error during verification',
+            'details': str(e)
         }), 500
 
 if __name__ == '__main__':

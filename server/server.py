@@ -59,12 +59,22 @@ def upload_qasm():
             return jsonify({'success': False, 'error': 'No file uploaded'}), 400
 
         file = request.files['file']
+        backend_name = request.headers.get('Backend', 'statevector_simulator')
 
         if file.filename == '':
             return jsonify({'success': False, 'error': 'No selected file'}), 400
 
         if not allowed_file(file.filename):
             return jsonify({'success': False, 'error': 'Invalid file type'}), 400
+
+        # Validate backend selection
+        available_backends = Aer.backends()
+        valid_backends = [b.name() for b in available_backends]
+        if backend_name not in valid_backends:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid backend. Available: {", ".join(valid_backends)}'
+            }), 400
 
         temp_dir = tempfile.gettempdir()
         filename = f"qasm_{uuid.uuid4().hex}.qasm"
@@ -75,22 +85,28 @@ def upload_qasm():
             qasm_str = f.read()
 
         circuit = QuantumCircuit.from_qasm_str(qasm_str)
+        backend = Aer.get_backend(backend_name)
 
+        # Draw circuit first
         circuit_buf = io.BytesIO()
         circuit.draw('mpl').savefig(circuit_buf, format='png')
         circuit_buf.seek(0)
         circuit_image = base64.b64encode(circuit_buf.getvalue()).decode('utf-8')
 
+        # Execute based on backend type
         bloch_images = []
-        simulator = Aer.get_backend('statevector_simulator')
-        result = execute(circuit, simulator).result()
-        statevector = result.get_statevector()
-
-        for qubit in range(circuit.num_qubits):
-            buf = io.BytesIO()
-            plot_bloch_multivector(statevector).savefig(buf, format='png')
-            bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
-            plt.close()
+        if backend_name == 'statevector_simulator':
+            result = execute(circuit, backend).result()
+            statevector = result.get_statevector()
+            
+            for qubit in range(circuit.num_qubits):
+                buf = io.BytesIO()
+                plot_bloch_multivector(statevector).savefig(buf, format='png')
+                bloch_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+                plt.close()
+        else:
+            # For other backends, just return empty Bloch spheres
+            bloch_images = [None] * circuit.num_qubits
 
         os.remove(filepath)
 
@@ -113,7 +129,8 @@ def upload_qasm():
             "circuit_image": circuit_image,
             "num_qubits": circuit.num_qubits,
             "gates": [str(gate) for gate in formatted_gates],
-            "bloch_spheres": bloch_images
+            "bloch_spheres": bloch_images,
+            "backend_used": backend_name
         })
 
     except Exception as e:

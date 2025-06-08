@@ -17,14 +17,24 @@ export default function QASMUploader() {
     setFileName(file.name);
 
     try {
-      // First try FormData approach (which your backend expects)
+      // First check if backend is reachable
+      try {
+        const healthCheck = await fetch('http://localhost:5001/health');
+        if (!healthCheck.ok) {
+          throw new Error('Backend server is not responding');
+        }
+      } catch (healthError) {
+        throw new Error('Cannot connect to backend server. Please make sure it is running on port 5001.');
+      }
+
+      // Proceed with file upload
       const formData = new FormData();
       formData.append('file', file);
 
       const response = await fetch('http://localhost:5001/api/upload-qasm', {
         method: 'POST',
         body: formData,
-        credentials: 'include' // Important for session/cookies
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -45,16 +55,19 @@ export default function QASMUploader() {
       setResults({
         ...data,
         num_qubits: data.num_qubits,
-        num_gates: data.gates ? data.gates.length : 0
+        num_gates: data.gates ? data.gates.length : 0,
+        // Add empty Bloch spheres if not provided by backend
+        bloch_spheres: data.bloch_spheres || Array(data.num_qubits).fill(null)
       });
     } catch (error) {
       console.error('Upload error:', error);
       let errorMessage = error.message;
       
-      if (error.message.includes('400')) {
-        errorMessage = 'Invalid file format. Please upload a valid QASM file.';
-      } else if (error.message.includes('No file uploaded')) {
-        errorMessage = 'File upload failed. Please try again.';
+      if (error.message.includes('Failed to fetch')) {
+        errorMessage = 'Connection failed. Please ensure:';
+        errorMessage += '\n1. Backend server is running (flask run)';
+        errorMessage += '\n2. Server is on port 5001';
+        errorMessage += '\n3. No CORS issues (check browser console)';
       }
       
       setError(errorMessage);
@@ -89,10 +102,7 @@ export default function QASMUploader() {
       {error && (
         <div className="error-message">
           <h3>Error</h3>
-          <p>{error}</p>
-          {error.includes('connect') && (
-            <p>Please ensure the backend server is running on port 5001.</p>
-          )}
+          <p style={{whiteSpace: 'pre-line'}}>{error}</p>
           <button onClick={() => setError(null)}>Try Again</button>
         </div>
       )}
@@ -111,6 +121,14 @@ export default function QASMUploader() {
               <p><strong>Qubits:</strong> {results.num_qubits}</p>
               <p><strong>Gates:</strong> {results.num_gates}</p>
             </div>
+          </div>
+
+          <div className="quantum-state-visualization">
+            <h3>Qubit States</h3>
+            <BlochSpheres 
+              spheres={results.bloch_spheres} 
+              numQubits={results.num_qubits}
+            />
           </div>
 
           {results.gates && (

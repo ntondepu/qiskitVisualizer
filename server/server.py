@@ -551,7 +551,7 @@ def verify_challenge():
                 'error': 'Missing challenge_id or solution'
             }), 400
 
-        challenge = next((c for c in CHALLENGES if c['id'] == challenge_id), None)
+        challenge = next((c for c in CHALLENGES if c['id'] == int(challenge_id)), None)
         if not challenge:
             return jsonify({
                 'success': False,
@@ -666,7 +666,13 @@ def verify_challenge():
             'details': str(e)
         }), 500
 
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
+
 if __name__ == '__main__':
-    if not os.path.exists(UPLOAD_FOLDER):
-        os.makedirs(UPLOAD_FOLDER)
     app.run(port=5001, debug=True, host='0.0.0.0')

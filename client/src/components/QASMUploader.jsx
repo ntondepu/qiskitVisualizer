@@ -1,5 +1,15 @@
 import { useState, useEffect } from 'react';
-import { FaUpload, FaMicrochip, FaBolt, FaRobot, FaGamepad, FaSpinner, FaCheckCircle, FaExclamationTriangle, FaSync } from 'react-icons/fa';
+import { 
+  FaUpload, 
+  FaMicrochip, 
+  FaBolt, 
+  FaRobot, 
+  FaGamepad, 
+  FaSpinner, 
+  FaCheckCircle, 
+  FaExclamationTriangle, 
+  FaSync 
+} from 'react-icons/fa';
 import BlochSpheres from './BlochSpheres';
 
 export default function QASMUploader() {
@@ -135,7 +145,6 @@ export default function QASMUploader() {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 text-white p-6">
-            {/* Removed ParticleBackground but kept the gradient */}
             <div className="max-w-6xl mx-auto">
                 {/* Animated Header Tabs */}
                 <div className="flex space-x-1 mb-8 overflow-x-auto pb-2">

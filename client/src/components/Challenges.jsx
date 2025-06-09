@@ -16,15 +16,19 @@ export default function Challenges() {
   useEffect(() => {
     const fetchChallenges = async () => {
       try {
-        const response = await fetch('/api/challenges');
+        const response = await fetch('http://localhost:5001/api/challenges');
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
         const data = await response.json();
         if (data.success) {
           setChallenges(data.challenges);
         } else {
-          setError('Failed to load challenges');
+          setError('Failed to load challenges from server');
         }
       } catch (err) {
-        setError('Network error loading challenges');
+        setError(`Failed to connect to server: ${err.message}`);
+        console.error('Fetch error:', err);
       }
     };
     fetchChallenges();
@@ -39,7 +43,7 @@ export default function Challenges() {
     setIsLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/verify-challenge', {
+      const response = await fetch('http://localhost:5001/api/verify-challenge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -47,6 +51,11 @@ export default function Challenges() {
           solution: userSolution
         })
       });
+      
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+
       const data = await response.json();
       
       if (!data.success) {

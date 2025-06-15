@@ -5,6 +5,9 @@ import { fileURLToPath, URL } from 'node:url';
 export default defineConfig({
   plugins: [react()],
   
+  // Base path for production
+  base: process.env.NODE_ENV === 'production' ? '/static' : '/',
+  
   server: {
     port: 5173,
     strictPort: true,
@@ -17,26 +20,21 @@ export default defineConfig({
         ws: true,
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq) => {
-            if (proxyReq.getHeader('origin')) {
-              proxyReq.setHeader('origin', 'http://localhost:5001');
-            }
+            proxyReq.setHeader('Origin', 'http://localhost:5173');
           });
         }
       }
     },
     cors: {
-      origin: ['http://localhost:5001', 'http://127.0.0.1:5001'],
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE']
+      origin: 'http://localhost:5001',
+      credentials: true
     }
   },
   
   build: {
-    outDir: '../server/static',
+    outDir: './dist', // Changed from '../server/static'
     emptyOutDir: true,
     sourcemap: process.env.NODE_ENV !== 'production',
-    minify: 'terser',
-    chunkSizeWarningLimit: 1600,
     rollupOptions: {
       output: {
         assetFileNames: 'assets/[name]-[hash][extname]',
@@ -45,7 +43,7 @@ export default defineConfig({
         manualChunks: {
           react: ['react', 'react-dom'],
           three: ['three', '@react-three/fiber'],
-          qiskit: ['qasm-interpreter']
+          vendor: ['axios', 'qasm-interpreter']
         }
       }
     }
@@ -64,22 +62,6 @@ export default defineConfig({
     modules: {
       localsConvention: 'camelCaseOnly',
       generateScopedName: '[name]__[local]___[hash:base64:5]'
-    },
-    preprocessorOptions: {
-      scss: {
-        additionalData: `@import "@assets/styles/variables.scss";`
-      }
     }
-  },
-  
-  optimizeDeps: {
-    include: [
-      'react',
-      'react-dom',
-      'three',
-      '@react-three/fiber',
-      'qasm-interpreter'
-    ],
-    exclude: ['js-big-decimal']
   }
 });

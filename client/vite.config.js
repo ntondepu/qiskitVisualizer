@@ -5,6 +5,9 @@ import { fileURLToPath, URL } from 'node:url';
 export default defineConfig({
   plugins: [react()],
   
+  // Base path for production
+  base: process.env.NODE_ENV === 'production' ? '/static' : '/',
+  
   server: {
     port: 5173,
     strictPort: true,
@@ -15,19 +18,13 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, ''),
         ws: true,
-        configure: (proxy, options) => {
-          // Important for session cookies to work
+        configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq) => {
             proxyReq.setHeader('Origin', 'http://localhost:5173');
-          });
-          proxy.on('proxyRes', (proxyRes) => {
-            proxyRes.headers['Access-Control-Allow-Origin'] = 'http://localhost:5173';
-            proxyRes.headers['Access-Control-Allow-Credentials'] = 'true';
           });
         }
       }
     },
-    // Enable CORS for development
     cors: {
       origin: 'http://localhost:5001',
       credentials: true
@@ -35,14 +32,19 @@ export default defineConfig({
   },
   
   build: {
-    outDir: '../server/static',
+    outDir: './dist', // Changed from '../server/static'
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: process.env.NODE_ENV !== 'production',
     rollupOptions: {
       output: {
-        assetFileNames: 'assets/[name].[hash].[ext]',
-        chunkFileNames: 'assets/[name].[hash].js',
-        entryFileNames: 'assets/[name].[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          three: ['three', '@react-three/fiber'],
+          vendor: ['axios', 'qasm-interpreter']
+        }
       }
     }
   },
@@ -50,14 +52,16 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@components': fileURLToPath(new URL('./src/components', import.meta.url))
+      '@components': fileURLToPath(new URL('./src/components', import.meta.url)),
+      '@assets': fileURLToPath(new URL('./src/assets', import.meta.url))
     }
   },
   
   css: {
     devSourcemap: true,
     modules: {
-      localsConvention: 'camelCaseOnly'
+      localsConvention: 'camelCaseOnly',
+      generateScopedName: '[name]__[local]___[hash:base64:5]'
     }
   }
 });

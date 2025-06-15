@@ -1,12 +1,8 @@
 {
+  "name": "server",
+  "main": "index.js",
   "scripts": {
-    "client": "cd client && npm run dev",
-    "server": "cd server && npm start",
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "build": "cd client && npm run build"
-  },
-  "devDependencies": {
-    "concurrently": "^9.1.2"
+    "start": "node index.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

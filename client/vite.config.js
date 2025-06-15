@@ -15,34 +15,38 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, ''),
         ws: true,
-        configure: (proxy, options) => {
-          // Important for session cookies to work
+        configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.setHeader('Origin', 'http://localhost:5173');
-          });
-          proxy.on('proxyRes', (proxyRes) => {
-            proxyRes.headers['Access-Control-Allow-Origin'] = 'http://localhost:5173';
-            proxyRes.headers['Access-Control-Allow-Credentials'] = 'true';
+            if (proxyReq.getHeader('origin')) {
+              proxyReq.setHeader('origin', 'http://localhost:5001');
+            }
           });
         }
       }
     },
-    // Enable CORS for development
     cors: {
-      origin: 'http://localhost:5001',
-      credentials: true
+      origin: ['http://localhost:5001', 'http://127.0.0.1:5001'],
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE']
     }
   },
   
   build: {
     outDir: '../server/static',
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: process.env.NODE_ENV !== 'production',
+    minify: 'terser',
+    chunkSizeWarningLimit: 1600,
     rollupOptions: {
       output: {
-        assetFileNames: 'assets/[name].[hash].[ext]',
-        chunkFileNames: 'assets/[name].[hash].js',
-        entryFileNames: 'assets/[name].[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          three: ['three', '@react-three/fiber'],
+          qiskit: ['qasm-interpreter']
+        }
       }
     }
   },
@@ -50,14 +54,32 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@components': fileURLToPath(new URL('./src/components', import.meta.url))
+      '@components': fileURLToPath(new URL('./src/components', import.meta.url)),
+      '@assets': fileURLToPath(new URL('./src/assets', import.meta.url))
     }
   },
   
   css: {
     devSourcemap: true,
     modules: {
-      localsConvention: 'camelCaseOnly'
+      localsConvention: 'camelCaseOnly',
+      generateScopedName: '[name]__[local]___[hash:base64:5]'
+    },
+    preprocessorOptions: {
+      scss: {
+        additionalData: `@import "@assets/styles/variables.scss";`
+      }
     }
+  },
+  
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'three',
+      '@react-three/fiber',
+      'qasm-interpreter'
+    ],
+    exclude: ['js-big-decimal']
   }
 });

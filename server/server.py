@@ -1,11 +1,13 @@
 import matplotlib
-matplotlib.use('Agg')
-from matplotlib import pyplot as plt
+matplotlib.use('Agg')  # Set backend before importing pyplot
+import matplotlib.pyplot as plt
 from flask import Flask, request, jsonify, session, send_from_directory
 from flask_cors import CORS
-from qiskit import QuantumCircuit, transpile, execute
+from qiskit import QuantumCircuit, transpile
+from qiskit.qasm2 import dumps as qasm_dumps
 from qiskit.visualization import plot_bloch_multivector, plot_histogram
-from qiskit_aer import Aer
+from qiskit.quantum_info import partial_trace
+from qiskit_aer import Aer, AerSimulator
 from qiskit_aer.noise import NoiseModel, depolarizing_error, pauli_error
 import base64
 import io
@@ -18,19 +20,47 @@ import uuid
 from werkzeug.utils import secure_filename
 import traceback
 
+# Debug utilities
+def debug_print(message, level="INFO"):
+    """Enhanced debug printing with emojis and levels"""
+    emoji_map = {
+        "INFO": "ℹ️",
+        "SUCCESS": "✅", 
+        "ERROR": "❌",
+        "WARNING": "⚠️",
+        "DEBUG": "🔍"
+    }
+    print(f"[{emoji_map.get(level, 'ℹ️')} {level}] {message}")
+
+def log_request_info(endpoint_name):
+    """Log detailed request information"""
+    debug_print(f"🚀 {endpoint_name} endpoint called", "INFO")
+    debug_print(f"📍 Remote addr: {request.remote_addr}", "DEBUG")
+    debug_print(f"🔗 User agent: {request.headers.get('User-Agent', 'Unknown')[:50]}...", "DEBUG")
+    debug_print(f"📋 Content type: {request.content_type}", "DEBUG")
+
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'  # Change this in production
+
+# Generate a more secure secret key for sessions
+# In production, use a fixed secret key from environment variables
+import secrets
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
 
 # Simplified CORS configuration
 CORS(app, resources={
     r"/api/*": {
-        "origins": "*",
+        "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5002", "http://127.0.0.1:5002"],
         "supports_credentials": True,
-        "methods": ["GET", "POST", "OPTIONS"]
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "Cookie"],
+        "expose_headers": ["Set-Cookie"]
     },
     r"/health": {
-        "origins": "*",
-        "methods": ["GET"]
+        "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5002", "http://127.0.0.1:5002"],
+        "supports_credentials": True,
+        "methods": ["GET"],
+        "allow_headers": ["Content-Type", "Authorization", "Cookie"],
+        "expose_headers": ["Set-Cookie"]
     }
 })
 
@@ -73,12 +103,328 @@ CHALLENGES = [
     }
 ]
 
-# Session configuration
-app.config.update(
-    SESSION_COOKIE_SAMESITE='Lax',
-    SESSION_COOKIE_SECURE=True,
-    PERMANENT_SESSION_LIFETIME=86400
+# Session configuration - optimized for development and production
+import datetime
+
+# Check if we're in development (localhost)
+# Auto-detect development mode more accurately
+is_development = (
+    os.environ.get('FLASK_ENV') == 'development' or 
+    os.environ.get('FLASK_DEBUG') == '1' or
+    'localhost' in os.environ.get('FLASK_HOST', '') or
+    not os.environ.get('FLASK_ENV')  # Default to development if not explicitly set
 )
+
+app.config.update(
+    # Session cookie settings
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=False if is_development else True,  # Allow HTTP in development
+    SESSION_COOKIE_HTTPONLY=False,  # Allow JavaScript access for debugging (set to True in production)
+    PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=7),  # 7 days for better persistence
+    
+    # Additional session security
+    SESSION_COOKIE_NAME='qiskit_session',
+    SESSION_REFRESH_EACH_REQUEST=True,
+    SESSION_COOKIE_DOMAIN=None,  # Let Flask handle domain automatically
+    SESSION_COOKIE_PATH='/',     # Ensure cookies work for all paths
+    
+    # Make cookies persist across browser sessions
+    SESSION_COOKIE_MAX_AGE=datetime.timedelta(days=7).total_seconds()
+)
+
+# Session debugging utilities
+def log_session_info(endpoint_name):
+    """Log session information for debugging"""
+    session_id = request.cookies.get('qiskit_session', 'No session cookie')
+    has_circuit = 'current_circuit' in session
+    print(f"[SESSION DEBUG] {endpoint_name}")
+    print(f"  Session ID: {session_id[:20]}..." if len(session_id) > 20 else f"  Session ID: {session_id}")
+    print(f"  Has circuit in session: {has_circuit}")
+    print(f"  Session keys: {list(session.keys())}")
+    print(f"  Session permanent: {session.permanent}")
+    return session_id
+
+@app.before_request
+def make_session_permanent():
+    """Ensure sessions are permanent and track session info"""
+    session.permanent = True
+    
+    # Add session debugging for API endpoints
+    if request.path.startswith('/api/'):
+        log_session_info(f"BEFORE {request.path}")
+
+# In-memory backup storage for circuit data (as fallback)
+circuit_backup_storage = {}
+
+def get_session_id():
+    """Get or create a session ID for circuit storage"""
+    if 'session_id' not in session:
+        session['session_id'] = str(uuid.uuid4())
+    return session['session_id']
+
+def store_circuit(circuit_qasm):
+    """Store circuit in both session and backup storage"""
+    session_id = get_session_id()
+    session['current_circuit'] = circuit_qasm
+    circuit_backup_storage[session_id] = circuit_qasm
+    print(f"[STORAGE] Circuit stored for session {session_id[:8]}...")
+
+def get_circuit():
+    """Get circuit from session or backup storage"""
+    # Try session first
+    if 'current_circuit' in session:
+        return session['current_circuit']
+    
+    # Try backup storage
+    session_id = session.get('session_id')
+    if session_id and session_id in circuit_backup_storage:
+        circuit_qasm = circuit_backup_storage[session_id]
+        session['current_circuit'] = circuit_qasm  # Restore to session
+        print(f"[STORAGE] Circuit restored from backup for session {session_id[:8]}...")
+        return circuit_qasm
+    
+    # Fallback: if there's only one circuit in backup storage, use it
+    # This helps with session recovery during development
+    if len(circuit_backup_storage) == 1:
+        fallback_session_id, circuit_qasm = next(iter(circuit_backup_storage.items()))
+        print(f"[STORAGE] Using fallback circuit from session {fallback_session_id[:8]}...")
+        session['current_circuit'] = circuit_qasm
+        session['session_id'] = fallback_session_id  # Update session ID
+        return circuit_qasm
+    
+    return None
+
+def has_circuit():
+    """Check if circuit exists in session or backup"""
+    return get_circuit() is not None
+
+# Debug endpoint to check session status
+@app.route('/api/session-debug', methods=['GET'])
+def session_debug():
+    """Debug endpoint to check session status"""
+    try:
+        session_id = log_session_info("session-debug")
+        
+        return jsonify({
+            'success': True,
+            'session_id': session_id,
+            'has_circuit': 'current_circuit' in session,
+            'session_keys': list(session.keys()),
+            'session_permanent': session.permanent,
+            'cookie_secure': app.config.get('SESSION_COOKIE_SECURE'),
+            'cookie_samesite': app.config.get('SESSION_COOKIE_SAMESITE'),
+            'is_development': is_development,
+            'cookies_received': dict(request.cookies),
+            'backup_storage_sessions': list(circuit_backup_storage.keys()),
+            'request_headers': dict(request.headers)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# New endpoint to force circuit restoration from backup
+@app.route('/api/restore-session', methods=['POST'])
+def restore_session():
+    """Manually restore circuit from backup storage"""
+    try:
+        session_id = get_session_id()
+        
+        # Try to restore from backup
+        if session_id in circuit_backup_storage:
+            circuit_qasm = circuit_backup_storage[session_id]
+            session['current_circuit'] = circuit_qasm
+            print(f"[RESTORE] Circuit restored for session {session_id[:8]}...")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Circuit restored from backup',
+                'has_circuit': True,
+                'session_id': session_id[:8] + '...'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'No circuit found in backup storage',
+                'available_sessions': list(circuit_backup_storage.keys())
+            })
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# New endpoint to associate with an existing session
+@app.route('/api/associate-session', methods=['POST'])
+def associate_session():
+    """Associate current session with an existing circuit session"""
+    try:
+        data = request.get_json()
+        target_session_id = data.get('session_id') if data else None
+        
+        # If no specific session ID provided, use the first available one
+        if not target_session_id and circuit_backup_storage:
+            target_session_id = next(iter(circuit_backup_storage.keys()))
+        
+        if target_session_id and target_session_id in circuit_backup_storage:
+            circuit_qasm = circuit_backup_storage[target_session_id]
+            session['current_circuit'] = circuit_qasm
+            session['session_id'] = target_session_id
+            
+            print(f"[ASSOCIATE] Session associated with {target_session_id[:8]}...")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Session associated with existing circuit',
+                'session_id': target_session_id[:8] + '...',
+                'has_circuit': True
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'No circuits available for association',
+                'available_sessions': list(circuit_backup_storage.keys())
+            })
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# Browser-accessible diagnostic page
+@app.route('/debug', methods=['GET'])
+def debug_page():
+    """Simple HTML page for browser-based debugging"""
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Qiskit Visualizer Debug</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+            .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+            .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+            .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+            button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+            button:hover { background: #0056b3; }
+            pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        </style>
+    </head>
+    <body>
+        <h1>Qiskit Visualizer Debug Console</h1>
+        <div id="status"></div>
+        
+        <h3>Actions:</h3>
+        <button onclick="checkSession()">Check Session</button>
+        <button onclick="checkCircuit()">Check Circuit Status</button>
+        <button onclick="createTestCircuit()">Create Test Circuit</button>
+        <button onclick="testOptimize()">Test Optimize</button>
+        <button onclick="associateSession()">Associate with Existing Session</button>
+        
+        <div id="output"></div>
+        
+        <script>
+            function log(message, type = 'info') {
+                const output = document.getElementById('output');
+                const div = document.createElement('div');
+                div.className = 'status ' + type;
+                div.innerHTML = '<strong>' + new Date().toLocaleTimeString() + ':</strong> ' + message;
+                output.appendChild(div);
+                output.scrollTop = output.scrollHeight;
+            }
+            
+            async function apiCall(endpoint, options = {}) {
+                try {
+                    const response = await fetch(endpoint, {
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        ...options
+                    });
+                    const data = await response.json();
+                    return { success: response.ok, data, status: response.status };
+                } catch (error) {
+                    return { success: false, error: error.message };
+                }
+            }
+            
+            async function checkSession() {
+                log('Checking session status...', 'info');
+                const result = await apiCall('/api/session-debug');
+                if (result.success) {
+                    log('Session Status: ' + JSON.stringify(result.data, null, 2), 'success');
+                } else {
+                    log('Session check failed: ' + (result.error || result.data?.error), 'error');
+                }
+            }
+            
+            async function checkCircuit() {
+                log('Checking circuit status...', 'info');
+                const result = await apiCall('/api/circuit-status');
+                if (result.success) {
+                    const hasCircuit = result.data.hasCircuit;
+                    log('Circuit Status: ' + (hasCircuit ? 'FOUND' : 'NOT FOUND'), hasCircuit ? 'success' : 'error');
+                    log('Details: ' + JSON.stringify(result.data, null, 2), 'info');
+                } else {
+                    log('Circuit check failed: ' + (result.error || result.data?.error), 'error');
+                }
+            }
+            
+            async function createTestCircuit() {
+                log('Creating test circuit...', 'info');
+                const result = await apiCall('/api/init-circuit', {
+                    method: 'POST',
+                    body: JSON.stringify({ num_qubits: 2 })
+                });
+                if (result.success) {
+                    log('Circuit created successfully!', 'success');
+                    // Add a gate
+                    const gateResult = await apiCall('/api/add-gate', {
+                        method: 'POST',
+                        body: JSON.stringify({ gate: 'h', target: 0 })
+                    });
+                    if (gateResult.success) {
+                        log('Added Hadamard gate to qubit 0', 'success');
+                    }
+                } else {
+                    log('Circuit creation failed: ' + (result.error || result.data?.error), 'error');
+                }
+            }
+            
+            async function testOptimize() {
+                log('Testing optimization...', 'info');
+                const result = await apiCall('/api/optimize', {
+                    method: 'POST',
+                    body: JSON.stringify({ level: 2 })
+                });
+                if (result.success) {
+                    log('Optimization successful!', 'success');
+                    log('Results: ' + JSON.stringify(result.data, null, 2), 'info');
+                } else {
+                    log('Optimization failed: ' + (result.error || result.data?.error), 'error');
+                    if (result.data?.debug_info) {
+                        log('Debug info: ' + JSON.stringify(result.data.debug_info, null, 2), 'info');
+                    }
+                }
+            }
+            
+            async function associateSession() {
+                log('Attempting to associate with existing session...', 'info');
+                const result = await apiCall('/api/associate-session', {
+                    method: 'POST',
+                    body: JSON.stringify({})
+                });
+                if (result.success) {
+                    log('Session association: ' + result.data.message, 'success');
+                } else {
+                    log('Session association failed: ' + (result.error || result.data?.error), 'error');
+                }
+            }
+            
+            // Auto-check session on load
+            window.onload = function() {
+                log('Debug console loaded. Testing connection...', 'info');
+                checkSession();
+            };
+        </script>
+    </body>
+    </html>
+    """
+    return html
 
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'qasm', 'pdf'}
@@ -91,8 +437,14 @@ def allowed_file(filename):
 @app.route('/api/upload-qasm', methods=['POST'])
 def upload_qasm():
     try:
-        if 'current_circuit' in session:
-            session.pop('current_circuit')
+        # Clear any existing circuit
+        circuit_qasm = get_circuit()
+        if circuit_qasm:
+            session_id = get_session_id()
+            if session_id in circuit_backup_storage:
+                del circuit_backup_storage[session_id]
+            if 'current_circuit' in session:
+                session.pop('current_circuit')
             
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file uploaded'}), 400
@@ -108,7 +460,7 @@ def upload_qasm():
 
         # Validate backend selection
         available_backends = Aer.backends()
-        valid_backends = [b.name() for b in available_backends]
+        valid_backends = [str(b).split("'")[1] if "'" in str(b) else str(b) for b in available_backends]
         if backend_name not in valid_backends:
             return jsonify({
                 'success': False,
@@ -129,8 +481,8 @@ def upload_qasm():
         # Draw circuit first
         try:
             circuit_buf = io.BytesIO()
-            fig = circuit.draw('mpl')
-            plt.savefig(circuit_buf, format='png', bbox_inches='tight')
+            fig = circuit.draw(output='mpl', style={'backgroundcolor': '#FFFFFF'})
+            plt.savefig(circuit_buf, format='png', bbox_inches='tight', dpi=150, facecolor='white')
             plt.close(fig)
             circuit_buf.seek(0)
             circuit_image = base64.b64encode(circuit_buf.getvalue()).decode('utf-8')
@@ -144,16 +496,16 @@ def upload_qasm():
         bloch_images = []
         if backend_name == 'statevector_simulator':
             try:
-                result = execute(circuit, backend).result()
-                statevector = result.get_statevector()
+                result = backend.run(circuit).result()
+                statevector = result.get_statevector();
                 
-                buf = io.BytesIO()
-                fig = plot_bloch_multivector(statevector)
-                plt.savefig(buf, format='png', bbox_inches='tight')
-                plt.close(fig)
-                buf.seek(0)
-                bloch_image = base64.b64encode(buf.getvalue()).decode('utf-8')
-                bloch_images = [bloch_image] * circuit.num_qubits
+                buf = io.BytesIO();
+                fig = plot_bloch_multivector(statevector);
+                plt.savefig(buf, format='png', bbox_inches='tight');
+                plt.close(fig);
+                buf.seek(0);
+                bloch_image = base64.b64encode(buf.getvalue()).decode('utf-8');
+                bloch_images = [bloch_image] * circuit.num_qubits;
             except Exception as e:
                 bloch_images = [None] * circuit.num_qubits
         else:
@@ -164,8 +516,8 @@ def upload_qasm():
         formatted_gates = []
         for instruction in circuit.data:
             gate = instruction.operation
-            qubits = [qubit.index for qubit in instruction.qubits]
-            clbits = [clbit.index for clbit in instruction.clbits] if hasattr(instruction, 'clbits') else []
+            qubits = [circuit.find_bit(qubit).index for qubit in instruction.qubits]
+            clbits = [circuit.find_bit(clbit).index for clbit in instruction.clbits] if hasattr(instruction, 'clbits') else []
 
             gate_info = {
                 'name': gate.name,
@@ -193,6 +545,10 @@ def upload_qasm():
             'traceback': traceback.format_exc()
         }), 500
 
+@app.route('/api/health', methods=['GET'])
+def api_health_check():
+    return health_check()
+
 @app.route('/health', methods=['GET'])
 def health_check():
     try:
@@ -203,10 +559,25 @@ def health_check():
                 'status': 'unhealthy',
                 'error': 'No quantum backends available'
             }), 500
+        
+        # Include session information in health check
+        session_info = {
+            'has_session_cookie': 'qiskit_session' in request.cookies,
+            'session_id': request.cookies.get('qiskit_session', 'None')[:20] + '...' if request.cookies.get('qiskit_session') else 'None',
+            'has_circuit_in_session': 'current_circuit' in session,
+            'session_keys': list(session.keys()),
+            'session_permanent': session.permanent
+        }
             
         return jsonify({
             'status': 'healthy',
-            'backends': [b.name() for b in backends]
+            'backends': [str(b) for b in backends],
+            'session_info': session_info,
+            'config': {
+                'cookie_secure': app.config.get('SESSION_COOKIE_SECURE'),
+                'cookie_samesite': app.config.get('SESSION_COOKIE_SAMESITE'),
+                'is_development': is_development
+            }
         }), 200
     except Exception as e:
         return jsonify({
@@ -217,19 +588,31 @@ def health_check():
 @app.route('/api/init-circuit', methods=['POST'])
 def init_circuit():
     try:
+        log_request_info("INIT-CIRCUIT")
+        log_session_info("init-circuit START")
+        
         if not request.is_json:
+            debug_print("Request is not JSON", "ERROR")
             return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
 
         num_qubits = int(request.json.get('num_qubits', 2))
+        debug_print(f"Initializing circuit with {num_qubits} qubits", "INFO")
 
         if num_qubits < 1 or num_qubits > 10:
+            debug_print(f"Invalid qubit count: {num_qubits}", "ERROR")
             return jsonify({
                 'success': False,
                 'error': 'Number of qubits must be between 1 and 10'
             }), 400
 
         circuit = QuantumCircuit(num_qubits)
-        session['current_circuit'] = circuit.qasm()
+        circuit_qasm = qasm_dumps(circuit)
+        
+        # Use our improved storage system
+        store_circuit(circuit_qasm)
+        
+        debug_print(f"Circuit stored in session: {len(circuit_qasm)} chars", "SUCCESS")
+        log_session_info("init-circuit AFTER STORING")
 
         # Create a single Bloch sphere image for all qubits in |0> state
         buf = io.BytesIO()
@@ -239,42 +622,122 @@ def init_circuit():
         buf.seek(0)
         bloch_image = base64.b64encode(buf.getvalue()).decode('utf-8')
         bloch_images = [bloch_image] * num_qubits
+        debug_print(f"Generated {len(bloch_images)} Bloch sphere images", "SUCCESS")
 
-        return jsonify({
+        # Generate circuit diagram
+        circuit_image = None
+        try:
+            from qiskit.visualization import circuit_drawer
+            circuit_buf = io.BytesIO()
+            
+            # Create the circuit figure
+            fig = circuit_drawer(circuit, output='mpl', style='iqx', fold=-1)
+            if fig is not None:
+                fig.savefig(circuit_buf, format='png', bbox_inches='tight', dpi=150, facecolor='white')
+                plt.close(fig)
+                circuit_buf.seek(0)
+                circuit_image = base64.b64encode(circuit_buf.getvalue()).decode('utf-8')
+                debug_print(f"Generated circuit image: {len(circuit_image)} chars", "SUCCESS")
+            else:
+                debug_print("Circuit drawer returned None", "WARNING")
+        except Exception as e:
+            debug_print(f"Failed to generate circuit image: {str(e)}", "WARNING")
+            circuit_image = None
+
+        response_data = {
             'success': True,
             'bloch_spheres': bloch_images,
-            'num_qubits': num_qubits
-        })
+            'circuit_image': circuit_image,
+            'num_qubits': num_qubits,
+            'gates': [],
+            'session_debug': {
+                'session_id': get_session_id()[:8] + '...',
+                'has_circuit': has_circuit()
+            }
+        }
+        
+        debug_print("Circuit initialization completed successfully", "SUCCESS")
+        return jsonify(response_data)
     except Exception as e:
+        debug_print(f"Circuit initialization failed: {str(e)}", "ERROR")
+        debug_print(traceback.format_exc(), "DEBUG")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/circuit-status', methods=['GET'])
 def circuit_status():
     try:
-        if 'current_circuit' in session:
-            circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
+        log_session_info("circuit-status")
+        
+        circuit_qasm = get_circuit()
+        if circuit_qasm:
+            circuit = QuantumCircuit.from_qasm_str(circuit_qasm)
+            
+            # Generate Bloch sphere images for the current circuit state
+            bloch_images = []
+            try:
+                # Use statevector simulator to get current state
+                backend = Aer.get_backend('statevector_simulator')
+                result = backend.run(circuit).result()
+                statevector = result.get_statevector()
+                
+                # Generate Bloch sphere visualization
+                buf = io.BytesIO()
+                fig = plot_bloch_multivector(statevector)
+                plt.savefig(buf, format='png', bbox_inches='tight')
+                plt.close(fig)
+                buf.seek(0)
+                bloch_image = base64.b64encode(buf.getvalue()).decode('utf-8')
+                bloch_images = [bloch_image] * circuit.num_qubits
+            except Exception as e:
+                print(f"Bloch sphere generation failed: {str(e)}")
+                bloch_images = []
+            
             return jsonify({
                 'success': True,
                 'hasCircuit': True,
-                'numQubits': circuit.num_qubits,
-                'gateCount': len(circuit.data)
+                'num_qubits': circuit.num_qubits,
+                'gate_count': len(circuit.data),
+                'circuit_depth': circuit.depth(),
+                'bloch_images': bloch_images,
+                'session_debug': {
+                    'session_id': get_session_id()[:8] + '...',
+                    'has_circuit': True,
+                    'circuit_length': len(circuit_qasm),
+                    'session_keys': list(session.keys()),
+                    'cookies_received': dict(request.cookies)
+                }
             })
+        
+        print("[SESSION DEBUG] No circuit found in session or backup")
         return jsonify({
             'success': True,
             'hasCircuit': False,
             'numQubits': 0,
-            'gateCount': 0
+            'gateCount': 0,
+            'session_debug': {
+                'session_id': get_session_id()[:8] + '...',
+                'has_circuit': False,
+                'session_keys': list(session.keys()),
+                'cookies_received': dict(request.cookies),
+                'backup_storage_keys': list(circuit_backup_storage.keys())
+            }
         })
     except Exception as e:
+        print(f"[SESSION DEBUG] Error in circuit-status: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'session_debug': {
+                'session_keys': list(session.keys()),
+                'cookies_received': dict(request.cookies)
+            }
         }), 500
 
 @app.route('/api/add-gate', methods=['POST'])
 def add_gate():
     try:
-        if 'current_circuit' not in session:
+        circuit_qasm = get_circuit()
+        if not circuit_qasm:
             return jsonify({
                 'success': False,
                 'error': 'No circuit initialized'
@@ -285,7 +748,7 @@ def add_gate():
         target = data['target']
         control = data.get('control')
 
-        circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
+        circuit = QuantumCircuit.from_qasm_str(circuit_qasm)
 
         if target >= circuit.num_qubits:
             return jsonify({
@@ -327,27 +790,36 @@ def add_gate():
                 'error': f'Unknown gate type: {gate_type}'
             }), 400
 
-        session['current_circuit'] = circuit.qasm()
+        # Store the updated circuit
+        store_circuit(qasm_dumps(circuit))
 
         # Draw circuit
-        buf = io.BytesIO()
-        fig = circuit.draw('mpl')
-        plt.savefig(buf, format='png', bbox_inches='tight')
-        plt.close(fig)
-        buf.seek(0)
-        circuit_image = base64.b64encode(buf.getvalue()).decode('utf-8')
+        circuit_image = None
+        try:
+            from qiskit.visualization import circuit_drawer
+            buf = io.BytesIO()
+            fig = circuit_drawer(circuit, output='mpl', style='iqx', fold=-1)
+            if fig is not None:
+                fig.savefig(buf, format='png', bbox_inches='tight', dpi=150, facecolor='white')
+                plt.close(fig)
+                buf.seek(0)
+                circuit_image = base64.b64encode(buf.getvalue()).decode('utf-8')
+            else:
+                debug_print("Circuit drawer returned None in add_gate", "WARNING")
+        except Exception as e:
+            debug_print(f"Failed to generate circuit image in add_gate: {str(e)}", "WARNING")
 
         # Get statevector and plot Bloch spheres
         backend = Aer.get_backend('statevector_simulator')
-        state = execute(circuit, backend).result().get_statevector()
+        state = backend.run(circuit).result().get_statevector();
         
-        buf = io.BytesIO()
-        fig = plot_bloch_multivector(state)
-        plt.savefig(buf, format='png', bbox_inches='tight')
-        plt.close(fig)
-        buf.seek(0)
-        bloch_image = base64.b64encode(buf.getvalue()).decode('utf-8')
-        bloch_images = [bloch_image] * circuit.num_qubits
+        buf = io.BytesIO();
+        fig = plot_bloch_multivector(state);
+        plt.savefig(buf, format='png', bbox_inches='tight');
+        plt.close(fig);
+        buf.seek(0);
+        bloch_image = base64.b64encode(buf.getvalue()).decode('utf-8');
+        bloch_images = [bloch_image] * circuit.num_qubits;
 
         return jsonify({
             'success': True,
@@ -361,7 +833,8 @@ def add_gate():
 @app.route('/api/run-simulation', methods=['POST'])
 def run_simulation():
     try:
-        if 'current_circuit' not in session:
+        circuit_qasm = get_circuit()
+        if not circuit_qasm:
             return jsonify({
                 'success': False,
                 'error': 'No circuit loaded'
@@ -374,12 +847,12 @@ def run_simulation():
                 'error': 'Shots must be between 1 and 10000'
             }), 400
 
-        circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
+        circuit = QuantumCircuit.from_qasm_str(circuit_qasm)
         measured_circuit = circuit.copy()
         measured_circuit.measure_all()
 
         simulator = Aer.get_backend('qasm_simulator')
-        job = execute(measured_circuit, simulator, shots=shots)
+        job = simulator.run(measured_circuit, shots=shots)
         result = job.result()
         counts = result.get_counts()
 
@@ -401,13 +874,27 @@ def run_simulation():
 @app.route('/api/optimize', methods=['POST'])
 def optimize_circuit():
     try:
-        if 'current_circuit' not in session:
+        log_session_info("optimize-circuit START")
+        
+        circuit_qasm = get_circuit()
+        if not circuit_qasm:
+            print("[OPTIMIZE DEBUG] No circuit found in session or backup")
+            print(f"[OPTIMIZE DEBUG] Session keys: {list(session.keys())}")
+            print(f"[OPTIMIZE DEBUG] Backup storage keys: {list(circuit_backup_storage.keys())}")
+            print(f"[OPTIMIZE DEBUG] Cookies: {dict(request.cookies)}")
+            
             return jsonify({
                 'success': False,
-                'error': 'No circuit to optimize'
+                'error': 'No circuit to optimize',
+                'debug_info': {
+                    'session_keys': list(session.keys()),
+                    'backup_storage_keys': list(circuit_backup_storage.keys()),
+                    'cookies_received': dict(request.cookies),
+                    'session_id': get_session_id()[:8] + '...'
+                }
             }), 400
 
-        circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
+        circuit = QuantumCircuit.from_qasm_str(circuit_qasm)
         level = int(request.json.get('level', 1))
         if level < 0 or level > 3:
             return jsonify({
@@ -415,6 +902,7 @@ def optimize_circuit():
                 'error': 'Optimization level must be between 0 and 3'
             }), 400
 
+        print(f"[OPTIMIZE DEBUG] Optimizing circuit with {len(circuit.data)} gates at level {level}")
         optimized_circuit = transpile(circuit, optimization_level=level)
 
         original_img = io.BytesIO()
@@ -443,12 +931,14 @@ def optimize_circuit():
             }
         })
     except Exception as e:
+        print(f"[OPTIMIZE DEBUG] Error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/noise-simulation', methods=["POST"])
 def noise_simulation():
     try:
-        if 'current_circuit' not in session:
+        circuit_qasm = get_circuit()
+        if not circuit_qasm:
             return jsonify({
                 'success': False,
                 'error': 'No circuit loaded'
@@ -467,7 +957,7 @@ def noise_simulation():
         bit_flip = min(max(float(noise_params.get('bit_flip', 0)), 0), 1.0)
         phase_flip = min(max(float(noise_params.get('phase_flip', 0)), 0), 1.0)
 
-        circuit = QuantumCircuit.from_qasm_str(session['current_circuit'])
+        circuit = QuantumCircuit.from_qasm_str(circuit_qasm)
         measured_circuit = circuit.copy()
         measured_circuit.measure_all()
 
@@ -489,9 +979,8 @@ def noise_simulation():
             noise_model.add_all_qubit_quantum_error(error, ['measure'])
 
         simulator = Aer.get_backend('qasm_simulator')
-        job = execute(
+        job = simulator.run(
             transpile(measured_circuit, simulator),
-            backend=simulator,
             shots=shots,
             noise_model=noise_model
         )
@@ -506,8 +995,8 @@ def noise_simulation():
         fidelity = None
         if any([depolarizing, bit_flip, phase_flip]):
             ideal_backend = Aer.get_backend('statevector_simulator')
-            ideal_state = execute(circuit, ideal_backend).result().get_statevector()
-            noisy_state = execute(circuit, ideal_backend,
+            ideal_state = ideal_backend.run(circuit).result().get_statevector()
+            noisy_state = ideal_backend.run(circuit,
                 noise_model=noise_model).result().get_statevector()
             fidelity = float(np.abs(np.dot(ideal_state.conj(), noisy_state))**2)
 
@@ -569,7 +1058,7 @@ def verify_challenge():
                     raise ValueError(f"Invalid gate format: {gate}")
                 
                 gate_name = parts[0].upper()
-                qubits = list(map(int, parts[1:]))
+                qubits = list(map(int, parts[1:]));
                 
                 if gate_name == 'H':
                     user_circuit.h(qubits[0])
@@ -610,7 +1099,7 @@ def verify_challenge():
                 continue
             parts = gate.split()
             gate_name = parts[0].upper()
-            qubits = list(map(int, parts[1:]))
+            qubits = list(map(int, parts[1:]));
             
             if gate_name == 'H':
                 ref_circuit.h(qubits[0])
@@ -621,15 +1110,15 @@ def verify_challenge():
 
         # Compare states
         backend = Aer.get_backend('statevector_simulator')
-        user_state = execute(user_circuit, backend).result().get_statevector()
-        ref_state = execute(ref_circuit, backend).result().get_statevector()
+        user_state = backend.run(user_circuit).result().get_statevector()
+        ref_state = backend.run(ref_circuit).result().get_statevector()
         
         # Calculate state fidelity
         fidelity = np.abs(np.dot(user_state.conj(), ref_state))**2
         is_correct = np.isclose(fidelity, 1.0, atol=1e-5)
 
         # Generate Bloch spheres
-        bloch_images = []
+        bloch_images = [];
         for qubit in range(challenge['num_qubits']):
             try:
                 traced_state = partial_trace(user_state, 
@@ -643,11 +1132,10 @@ def verify_challenge():
                 bloch_images.append(None)
 
         # Get measurement counts
-        measured_circuit = user_circuit.copy()
-        measured_circuit.measure_all()
-        counts = execute(measured_circuit, 
-                        Aer.get_backend('qasm_simulator'), 
-                        shots=1000).result().get_counts()
+        measured_circuit = user_circuit.copy();
+        measured_circuit.measure_all();
+        simulator = Aer.get_backend('qasm_simulator');
+        counts = simulator.run(measured_circuit, shots=1000).result().get_counts();
 
         return jsonify({
             'success': True,
@@ -675,4 +1163,4 @@ def serve(path):
         return send_from_directory(app.static_folder, 'index.html')
 
 if __name__ == '__main__':
-    app.run(port=5001, debug=True, host='0.0.0.0')
+    app.run(port=5002, debug=True, host='0.0.0.0')
